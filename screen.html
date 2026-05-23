@@ -1,17 +1,15 @@
-<!-- Folder Browser — screen.html
-     Injected as a sibling of .screen divs by the plugin loader.
-     Tailwind utility classes + slopsmith CSS vars (bg-dark-600 etc.) available. -->
-
+<!-- Folder Browser — screen.html -->
 <div id="screen-plugin-folder_browser"
      class="screen flex flex-col h-full bg-dark-600 text-gray-300">
 
   <!-- ── toolbar ──────────────────────────────────────────────────────── -->
-  <div class="flex items-center gap-2 px-4 py-3 border-b border-dark-400 shrink-0 flex-wrap">
+  <div class="flex items-center gap-2 px-4 py-3 border-b border-dark-400 shrink-0 flex-wrap"
+       style="position:relative; z-index:200;">
 
     <h2 class="text-base font-semibold text-white mr-1">Folders</h2>
 
     <!-- search -->
-    <div class="relative flex-1 min-w-40 max-w-xs">
+    <div class="relative flex-1 min-w-40 max-w-xs" style="z-index:200;">
       <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none"
            viewBox="0 0 20 20" fill="currentColor">
         <path fill-rule="evenodd"
@@ -19,26 +17,38 @@
               clip-rule="evenodd"/>
       </svg>
       <input id="fb-search" type="text" placeholder="Search songs…"
+             style="position:relative; z-index:200;"
              class="w-full pl-8 pr-3 py-1.5 rounded bg-dark-500 border border-dark-400
                     text-sm text-gray-200 placeholder-gray-500
                     focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"/>
     </div>
 
-    <!-- expand / collapse all -->
-    <button id="fb-expand-all" title="Expand all"
+    <!-- new folder -->
+    <button id="fb-new-folder" title="New folder"
             class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
-      <!-- chevrons-down icon -->
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
-           stroke-linecap="round" class="w-4 h-4">
-        <path d="M5 7l5 5 5-5M5 3l5 5 5-5" opacity=".5"/>
+      <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+        <path fill-rule="evenodd" d="M10 9a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1H8a1 1 0 110-2h1v-1a1 1 0 011-1z" clip-rule="evenodd"/>
       </svg>
     </button>
-    <button id="fb-collapse-all" title="Collapse all"
+
+    <!-- expand all -->
+    <button id="fb-expand-all" title="Expand all"
             class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
-      <!-- chevrons-up icon -->
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
            stroke-linecap="round" class="w-4 h-4">
-        <path d="M5 13l5-5 5 5M5 17l5-5 5 5" opacity=".5"/>
+        <path d="M5 8l5 5 5-5"/>
+        <path d="M5 4l5 5 5-5" opacity=".4"/>
+      </svg>
+    </button>
+
+    <!-- collapse all -->
+    <button id="fb-collapse-all" title="Collapse all"
+            class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" class="w-4 h-4">
+        <path d="M5 12l5-5 5 5"/>
+        <path d="M5 16l5-5 5 5" opacity=".4"/>
       </svg>
     </button>
 
@@ -52,11 +62,11 @@
       </svg>
     </button>
 
-    <!-- status text (loading / error) -->
     <span id="fb-status" class="text-xs text-gray-500 ml-1"></span>
   </div>
 
   <!-- ── tree ─────────────────────────────────────────────────────────── -->
-  <div id="fb-tree" class="flex-1 overflow-y-auto px-2 py-2"></div>
+  <div id="fb-tree" class="flex-1 overflow-y-auto px-2 py-2"
+       style="position:relative; z-index:1;"></div>
 
 </div>

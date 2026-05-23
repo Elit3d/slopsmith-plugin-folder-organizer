@@ -1,14 +1,14 @@
 /* Folder Browser — screen.js
  * Plain JS, global scope, IIFE. Follows slopsmith plugin conventions.
- * References: CLAUDE.md, app_tour_library/script.js, drums/screen.js
  */
 (function () {
 'use strict';
 
-const PLUGIN_ID   = 'folder_browser';
-const SCREEN_ID   = 'plugin-' + PLUGIN_ID;
+const PLUGIN_ID  = 'folder_browser';
+const SCREEN_ID  = 'plugin-' + PLUGIN_ID;
+const API        = '/api/plugin/folder_browser';
 
-// ── Safe localStorage helpers (see drums/screen.js pattern) ──────────
+// ── Safe localStorage helpers ─────────────────────────────────────────
 function _store(key, val) {
     try {
         if (val === undefined) return localStorage.getItem('fb:' + key);
@@ -23,16 +23,22 @@ function _storeJSON(key, val) {
 }
 
 // ── State ─────────────────────────────────────────────────────────────
-let _tree        = null;   // { folders: [], root_songs: [] } from backend
+let _tree        = null;
 let _openFolders = new Set(_storeJSON('open') || []);
+let _unsortedOpen = _store('unsorted_open') !== 'false';
 let _query       = '';
 let _loaded      = false;
 
-// ── DOM refs (resolved lazily after screen HTML is in the DOM) ────────
-function _el(id)   { return document.getElementById(id); }
-function _tree_el() { return _el('fb-tree'); }
+// ── DOM helpers ───────────────────────────────────────────────────────
+function _el(id) { return document.getElementById(id); }
 
-// ── Status line ───────────────────────────────────────────────────────
+// ── Close the nav plugin dropdown (it sits at z-50 and blocks clicks) ─
+function _closeDropdown() {
+    var dd = _el('plugin-dropdown');
+    if (dd) dd.classList.add('hidden');
+}
+
+// ── Status ────────────────────────────────────────────────────────────
 function _status(msg, isErr) {
     const el = _el('fb-status');
     if (!el) return;
@@ -40,13 +46,23 @@ function _status(msg, isErr) {
     el.className = 'text-xs ml-1 ' + (isErr ? 'text-red-400' : 'text-gray-500');
 }
 
-// ── Fetch ─────────────────────────────────────────────────────────────
+// ── API helpers ───────────────────────────────────────────────────────
+async function _api(path, body) {
+    const opts = body
+        ? { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body) }
+        : {};
+    const res = await fetch(API + path, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+}
+
+// ── Fetch tree ────────────────────────────────────────────────────────
 async function _load() {
     _status('Loading…');
     try {
-        const res  = await fetch('/api/plugin/folder_browser/tree');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+        const data = await _api('/tree');
         if (data.error) { _status('⚠ ' + data.error, true); return; }
         _tree   = data;
         _loaded = true;
@@ -78,16 +94,22 @@ function _filtered() {
     return { folders, root_songs: _tree.root_songs.filter(_match) };
 }
 
+// ── Confirm dialog ────────────────────────────────────────────────────
+function _confirm(msg) { return window.confirm(msg); }
+
+// ── Prompt dialog ─────────────────────────────────────────────────────
+function _prompt(msg, def) { return window.prompt(msg, def || ''); }
+
 // ── Song row ──────────────────────────────────────────────────────────
-function _songRow(song) {
+function _songRow(song, folderName) {
     const row = document.createElement('div');
     row.className = [
-        'w-full flex items-center gap-3 px-3 py-2 rounded cursor-pointer',
+        'flex items-center gap-3 px-3 py-2 rounded cursor-pointer',
         'hover:bg-dark-500 group transition-colors duration-100',
     ].join(' ');
     row.dataset.filename = song.filename;
 
-    // play chevron
+    // play icon
     const icon = document.createElement('span');
     icon.className = 'shrink-0 w-4 h-4 text-dark-400 group-hover:text-blue-400 transition-colors';
     icon.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-full h-full">
@@ -95,33 +117,44 @@ function _songRow(song) {
               d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
               clip-rule="evenodd"/></svg>`;
 
-    // title + artist line
+    // meta
     const meta = document.createElement('div');
     meta.className = 'flex-1 min-w-0';
-
     const title = document.createElement('div');
     title.className = 'text-sm text-gray-200 truncate group-hover:text-white';
     title.textContent = song.title || song.filename;
-
     const sub = document.createElement('div');
     sub.className = 'text-xs text-gray-500 truncate';
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
-
     meta.appendChild(title);
     meta.appendChild(sub);
 
-    row.appendChild(icon);
-    row.appendChild(meta);
-
     // duration
+    const dur = document.createElement('span');
+    dur.className = 'shrink-0 text-xs text-gray-600 tabular-nums';
     if (song.duration != null) {
-        const dur = document.createElement('span');
-        dur.className = 'shrink-0 text-xs text-gray-600 tabular-nums';
         const m = Math.floor(song.duration / 60);
         const s = String(Math.floor(song.duration % 60)).padStart(2, '0');
         dur.textContent = m + ':' + s;
-        row.appendChild(dur);
     }
+
+    // move button (hidden until hover)
+    const moveBtn = document.createElement('button');
+    moveBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+    moveBtn.title = 'Move to folder…';
+    moveBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+        <path fill-rule="evenodd" d="M10 11a1 1 0 011 1v2h2a1 1 0 110 2h-2v2a1 1 0 11-2 0v-2H7a1 1 0 110-2h2v-2a1 1 0 011-1z" clip-rule="evenodd"/></svg>`;
+
+    moveBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _moveSong(song, folderName);
+    });
+
+    row.appendChild(icon);
+    row.appendChild(meta);
+    row.appendChild(dur);
+    row.appendChild(moveBtn);
 
     row.addEventListener('click', function () {
         if (typeof window.playSong === 'function') window.playSong(song.filename);
@@ -130,20 +163,44 @@ function _songRow(song) {
     return row;
 }
 
-// ── Folder section ────────────────────────────────────────────────────
-function _folderSection(folder) {
-    // In search mode force-open all folders
-    const open = _query ? true : _openFolders.has(folder.name);
+// ── Move song dialog ──────────────────────────────────────────────────
+async function _moveSong(song, currentFolder) {
+    if (!_tree) return;
+    const folderNames = _tree.folders.map(f => f.name).filter(n => n !== currentFolder);
+    const options = ['(Unsorted)', ...folderNames];
+    const choice = _prompt(
+        'Move "' + (song.title || song.filename) + '" to folder:\n' +
+        options.map((n, i) => i + ': ' + n).join('\n') +
+        '\n\nEnter number or folder name:',
+        ''
+    );
+    if (choice === null) return;
+    let dest = '';
+    const idx = parseInt(choice, 10);
+    if (!isNaN(idx) && idx >= 0 && idx < options.length) {
+        dest = idx === 0 ? '' : options[idx];
+    } else {
+        dest = choice.trim() === '(Unsorted)' ? '' : choice.trim();
+    }
+    try {
+        await _api('/song/move', { filename: song.filename, folder: dest });
+        await _load();
+    } catch (err) {
+        alert('Move failed: ' + err.message);
+    }
+}
 
+// ── Folder header ─────────────────────────────────────────────────────
+function _folderSection(folder) {
+    const open = _query ? true : _openFolders.has(folder.name);
     const wrap = document.createElement('div');
 
-    // Header button
-    const hdr = document.createElement('button');
+    // header
+    const hdr = document.createElement('div');
     hdr.className = [
-        'w-full flex items-center gap-2 px-3 py-2 rounded text-left',
-        'hover:bg-dark-500 transition-colors duration-100',
+        'flex items-center gap-2 px-3 py-2 rounded cursor-pointer',
+        'hover:bg-dark-500 transition-colors duration-100 group',
     ].join(' ');
-    hdr.setAttribute('aria-expanded', String(open));
 
     // chevron
     const chev = document.createElement('span');
@@ -165,26 +222,51 @@ function _folderSection(folder) {
     lbl.textContent = folder.name;
 
     const cnt = document.createElement('span');
-    cnt.className = 'shrink-0 text-xs text-gray-600 tabular-nums';
+    cnt.className = 'shrink-0 text-xs text-gray-600 tabular-nums mr-1';
     cnt.textContent = String(folder.songs.length);
+
+    // rename button
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+    renameBtn.title = 'Rename folder';
+    renameBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>`;
+    renameBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _renameFolder(folder.name);
+    });
+
+    // delete button
+    const delBtn = document.createElement('button');
+    delBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-red-400 hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+    delBtn.title = 'Delete folder';
+    delBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+        <path fill-rule="evenodd"
+              d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+              clip-rule="evenodd"/></svg>`;
+    delBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _deleteFolder(folder.name, folder.songs.length);
+    });
 
     hdr.appendChild(chev);
     hdr.appendChild(ico);
     hdr.appendChild(lbl);
     hdr.appendChild(cnt);
+    hdr.appendChild(renameBtn);
+    hdr.appendChild(delBtn);
 
-    // Song list
+    // song list
     const list = document.createElement('div');
-    list.className = 'ml-5 mt-0.5 space-y-0 overflow-hidden';
+    list.className = 'ml-5 mt-0.5 space-y-0';
     list.style.display = open ? '' : 'none';
-    folder.songs.forEach(s => list.appendChild(_songRow(s)));
+    folder.songs.forEach(s => list.appendChild(_songRow(s, folder.name)));
 
     hdr.addEventListener('click', function () {
         if (_query) return;
         const nowOpen = list.style.display === 'none';
         list.style.display = nowOpen ? '' : 'none';
         chev.style.transform = nowOpen ? 'rotate(90deg)' : '';
-        hdr.setAttribute('aria-expanded', String(nowOpen));
         if (nowOpen) _openFolders.add(folder.name);
         else         _openFolders.delete(folder.name);
         _storeJSON('open', [..._openFolders]);
@@ -195,35 +277,136 @@ function _folderSection(folder) {
     return wrap;
 }
 
+// ── Unsorted section ──────────────────────────────────────────────────
+function _unsortedSection(songs) {
+    if (!songs.length) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'mb-1';
+
+    const hdr = document.createElement('div');
+    hdr.className = [
+        'flex items-center gap-2 px-3 py-2 rounded cursor-pointer',
+        'hover:bg-dark-500 transition-colors duration-100',
+    ].join(' ');
+
+    const chev = document.createElement('span');
+    chev.className = 'shrink-0 w-4 h-4 text-gray-600 transition-transform duration-150';
+    chev.style.transform = _unsortedOpen ? 'rotate(90deg)' : '';
+    chev.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-full h-full">
+        <path fill-rule="evenodd"
+              d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+              clip-rule="evenodd"/></svg>`;
+
+    const ico = document.createElement('span');
+    ico.className = 'shrink-0 w-4 h-4 text-gray-600';
+    ico.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-full h-full">
+        <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>`;
+
+    const lbl = document.createElement('span');
+    lbl.className = 'flex-1 text-xs font-semibold uppercase tracking-widest text-gray-600';
+    lbl.textContent = 'Unsorted';
+
+    const cnt = document.createElement('span');
+    cnt.className = 'shrink-0 text-xs text-gray-700 tabular-nums';
+    cnt.textContent = String(songs.length);
+
+    hdr.appendChild(chev);
+    hdr.appendChild(ico);
+    hdr.appendChild(lbl);
+    hdr.appendChild(cnt);
+
+    const list = document.createElement('div');
+    list.className = 'ml-5 mt-0.5 space-y-0';
+    list.style.display = _unsortedOpen ? '' : 'none';
+    songs.forEach(s => list.appendChild(_songRow(s, '')));
+
+    hdr.addEventListener('click', function () {
+        if (_query) return;
+        _unsortedOpen = list.style.display === 'none';
+        list.style.display = _unsortedOpen ? '' : 'none';
+        chev.style.transform = _unsortedOpen ? 'rotate(90deg)' : '';
+        _store('unsorted_open', String(_unsortedOpen));
+    });
+
+    wrap.appendChild(hdr);
+    wrap.appendChild(list);
+    return wrap;
+}
+
+// ── Folder management ─────────────────────────────────────────────────
+async function _createFolder() {
+    const name = _prompt('New folder name:');
+    if (!name || !name.trim()) return;
+    try {
+        await _api('/folder/create', { name: name.trim() });
+        _openFolders.add(name.trim());
+        await _load();
+    } catch (err) {
+        alert('Create failed: ' + err.message);
+    }
+}
+
+async function _renameFolder(oldName) {
+    const newName = _prompt('Rename "' + oldName + '" to:', oldName);
+    if (!newName || !newName.trim() || newName.trim() === oldName) return;
+    try {
+        await _api('/folder/rename', { old: oldName, new: newName.trim() });
+        if (_openFolders.has(oldName)) {
+            _openFolders.delete(oldName);
+            _openFolders.add(newName.trim());
+            _storeJSON('open', [..._openFolders]);
+        }
+        await _load();
+    } catch (err) {
+        alert('Rename failed: ' + err.message);
+    }
+}
+
+async function _deleteFolder(name, songCount) {
+    const msg = songCount > 0
+        ? 'Delete "' + name + '"? Its ' + songCount + ' song(s) will be moved to Unsorted.'
+        : 'Delete empty folder "' + name + '"?';
+    if (!_confirm(msg)) return;
+    try {
+        await _api('/folder/delete', { name });
+        _openFolders.delete(name);
+        _storeJSON('open', [..._openFolders]);
+        await _load();
+    } catch (err) {
+        alert('Delete failed: ' + err.message);
+    }
+}
+
+// ── Expand / collapse all ─────────────────────────────────────────────
+function _expandAll() {
+    if (!_tree) return;
+    _tree.folders.forEach(f => _openFolders.add(f.name));
+    _unsortedOpen = true;
+    _storeJSON('open', [..._openFolders]);
+    _store('unsorted_open', 'true');
+    _render();
+}
+function _collapseAll() {
+    _openFolders.clear();
+    _unsortedOpen = false;
+    _storeJSON('open', []);
+    _store('unsorted_open', 'false');
+    _render();
+}
+
 // ── Render ────────────────────────────────────────────────────────────
 function _render() {
-    const treeEl = _tree_el();
+    const treeEl = _el('fb-tree');
     if (!treeEl) return;
 
     const data = _filtered();
     const frag = document.createDocumentFragment();
 
-    // Root-level songs under an "Unsorted" label
-    if (data.root_songs.length) {
-        const sec = document.createElement('div');
-        sec.className = 'mb-2';
+    // Unsorted
+    const unsorted = _unsortedSection(data.root_songs);
+    if (unsorted) frag.appendChild(unsorted);
 
-        const lbl = document.createElement('div');
-        lbl.className = 'flex items-center gap-2 px-3 py-1';
-        lbl.innerHTML = `
-            <span class="w-4 h-4 shrink-0 text-gray-600">
-              <svg viewBox="0 0 20 20" fill="currentColor" class="w-full h-full">
-                <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
-              </svg>
-            </span>
-            <span class="text-xs font-semibold uppercase tracking-widest text-gray-600">Unsorted</span>`;
-
-        sec.appendChild(lbl);
-        data.root_songs.forEach(s => sec.appendChild(_songRow(s)));
-        frag.appendChild(sec);
-    }
-
-    // Folder sections
+    // Folders
     data.folders.forEach(f => frag.appendChild(_folderSection(f)));
 
     // Empty state
@@ -231,78 +414,58 @@ function _render() {
         const emp = document.createElement('div');
         emp.className = 'flex flex-col items-center justify-center py-24 gap-3 text-gray-700';
         emp.innerHTML = `
-            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
-                 class="w-12 h-12">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" class="w-12 h-12">
               <path d="M6 12a4 4 0 014-4h8l4 4h16a4 4 0 014 4v20a4 4 0 01-4 4H10a4 4 0 01-4-4V12z"/>
             </svg>
             <p class="text-sm">${_query ? 'No songs match your search.' : 'No songs found.'}</p>`;
         frag.appendChild(emp);
     }
 
-    // Restore scroll
     const prevScroll = parseInt(_store('scroll') || '0', 10);
     treeEl.innerHTML = '';
     treeEl.appendChild(frag);
     if (!_query) treeEl.scrollTop = prevScroll;
 }
 
-// ── Expand / collapse all ─────────────────────────────────────────────
-function _expandAll() {
-    if (!_tree) return;
-    _tree.folders.forEach(f => _openFolders.add(f.name));
-    _storeJSON('open', [..._openFolders]);
-    _render();
-}
-function _collapseAll() {
-    _openFolders.clear();
-    _storeJSON('open', []);
-    _render();
-}
-
 // ── Init ──────────────────────────────────────────────────────────────
 function _init() {
+    _closeDropdown();
+
     const search      = _el('fb-search');
     const reload      = _el('fb-reload');
     const expandAll   = _el('fb-expand-all');
     const collapseAll = _el('fb-collapse-all');
-    const treeEl      = _tree_el();
+    const newFolder   = _el('fb-new-folder');
+    const treeEl      = _el('fb-tree');
 
-    if (!search) return;   // screen HTML not in DOM yet
+    if (!search) return;
 
-    // Close the nav plugin dropdown if it is still open — it sits at z-50
-    // and blocks clicks on our screen (search bar, song rows, etc.).
-    var dropdown = _el('plugin-dropdown');
-    if (dropdown && !dropdown.classList.contains('hidden')) {
-        dropdown.classList.add('hidden');
-    }
+    // Force the search bar above any overlay
+    search.style.position = 'relative';
+    search.style.zIndex   = '100';
 
     search.addEventListener('input', function (e) {
         _query = e.target.value.trim();
         _render();
     });
-    reload.addEventListener('click', function () {
-        _loaded = false;
-        _load();
+    search.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _closeDropdown();
     });
+
+    reload.addEventListener('click', function () { _loaded = false; _load(); });
     expandAll.addEventListener('click', _expandAll);
     collapseAll.addEventListener('click', _collapseAll);
+    newFolder.addEventListener('click', _createFolder);
+
     treeEl.addEventListener('scroll', function () {
         _store('scroll', treeEl.scrollTop);
     }, { passive: true });
 
-    // Load data on first visit
     if (!_loaded) _load();
 }
 
-// ── React to screen changes (from app_tour_library/script.js pattern) ─
-// Use slopsmith event bus — same as how the tour plugin watches screens.
-function _closeDropdown() {
-    var dropdown = _el('plugin-dropdown');
-    if (dropdown && !dropdown.classList.contains('hidden')) {
-        dropdown.classList.add('hidden');
-    }
-}
-
+// ── Screen changed ────────────────────────────────────────────────────
 function _onScreenChanged(ev) {
     const id = ev && ev.detail && ev.detail.id;
     if (id === SCREEN_ID) {
@@ -314,7 +477,6 @@ function _onScreenChanged(ev) {
 if (window.slopsmith && typeof window.slopsmith.on === 'function') {
     window.slopsmith.on('screen:changed', _onScreenChanged);
 } else {
-    // slopsmith bus not ready yet — poll briefly (same pattern as tour plugin)
     var _deadline = performance.now() + 5000;
     var _pollId = setInterval(function () {
         if (window.slopsmith && typeof window.slopsmith.on === 'function') {
@@ -326,7 +488,7 @@ if (window.slopsmith && typeof window.slopsmith.on === 'function') {
     }, 100);
 }
 
-// ── Keyboard shortcut: / to focus search ─────────────────────────────
+// ── Keyboard shortcut ─────────────────────────────────────────────────
 if (typeof window.registerShortcut === 'function') {
     window.registerShortcut({
         key: '/',
@@ -334,15 +496,14 @@ if (typeof window.registerShortcut === 'function') {
         scope: 'plugin-' + PLUGIN_ID,
         handler: function (e) {
             e.preventDefault();
+            _closeDropdown();
             var s = _el('fb-search');
             if (s) { s.focus(); s.select(); }
         },
     });
 }
 
-// ── Wait for DOM then wire up ─────────────────────────────────────────
-// The plugin loader injects screen.html before running screen.js,
-// so the elements should already exist — but guard anyway.
+// ── Boot ──────────────────────────────────────────────────────────────
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _init, { once: true });
 } else {

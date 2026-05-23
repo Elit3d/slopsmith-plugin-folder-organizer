@@ -1,9 +1,9 @@
 {
-  "id": "folder_browser",
-  "name": "Folder Browser",
-  "version": "1.2.0",
+  "id": "folder_organizer",
+  "name": "Folder Organizer",
+  "version": "1.3.0",
   "private": true,
-  "nav": { "label": "Folders", "screen": "plugin-folder_browser" },
+  "nav": { "label": "Folders", "screen": "plugin-folder_organizer" },
   "screen": "screen.html",
   "script": "screen.js",
   "routes": "routes.py"
