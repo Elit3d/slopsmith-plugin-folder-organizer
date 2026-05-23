@@ -16,20 +16,16 @@ def setup(app, context):
 
     # ── helpers ──────────────────────────────────────────────────────────
 
-    def _scan_root() -> Path | None:
-        """
-        Find the best directory to scan. Try these in order:
-          1. <dlc_dir>/sloppak/   (desktop app default)
-          2. <dlc_dir>/           (fallback)
-        """
+    def _dlc_root() -> Path | None:
         try:
-            dlc = Path(context["get_dlc_dir"]())
-            sloppak = dlc / "sloppak"
-            if sloppak.exists():
-                return sloppak
-            return dlc
+            return Path(context["get_dlc_dir"]())
         except Exception:
             return None
+
+    def _scan_root(dlc: Path) -> Path:
+        """Scan dlc/sloppak/ if it exists, otherwise dlc/ directly."""
+        sloppak = dlc / "sloppak"
+        return sloppak if sloppak.exists() else dlc
 
     def _is_song(p: Path) -> bool:
         ext = p.suffix.lower()
@@ -39,8 +35,16 @@ def setup(app, context):
             return True
         return False
 
-    def _meta(p: Path) -> dict:
-        m = {"filename": p.name, "title": None, "artist": None,
+    def _meta(p: Path, dlc: Path) -> dict:
+        # Relative path from DLC root, forward-slash joined — matches
+        # the format playSong() expects e.g. "sloppak/CH/Artist - Title.sloppak"
+        try:
+            rel = p.relative_to(dlc)
+            filename = "/".join(rel.parts)
+        except ValueError:
+            filename = p.name
+
+        m = {"filename": filename, "title": None, "artist": None,
              "album": None, "duration": None}
         try:
             raw = context["extract_meta"](p)
@@ -60,7 +64,7 @@ def setup(app, context):
     @router.get("/tree")
     def get_tree():
         """
-        Scans <sloppak_dir>/ one level deep.
+        Scans <dlc>/sloppak/ one level deep (falls back to <dlc>/).
         Songs directly in the root → root_songs ("Unsorted").
         Songs inside a subfolder → that folder's entry.
 
@@ -69,13 +73,14 @@ def setup(app, context):
           "root_songs": [meta, ...]
         }
         """
-        root = _scan_root()
-        if not root or not root.exists():
-            log.warning("folder_browser: scan root not found (%s)", root)
+        dlc = _dlc_root()
+        if not dlc or not dlc.exists():
+            log.warning("folder_browser: DLC root not found (%s)", dlc)
             return JSONResponse({"folders": [], "root_songs": [],
                                  "error": "DLC directory not found"})
 
-        log.info("folder_browser: scanning %s", root)
+        root = _scan_root(dlc)
+        log.info("folder_browser: scanning %s (dlc root: %s)", root, dlc)
 
         folders: dict[str, list] = {}
         root_songs: list = []
@@ -86,17 +91,15 @@ def setup(app, context):
                     continue
 
                 if _is_song(entry):
-                    # Song sitting directly in the scan root
-                    root_songs.append(_meta(entry))
+                    root_songs.append(_meta(entry, dlc))
 
                 elif entry.is_dir():
-                    # Subfolder — collect songs one level inside it
                     kids = []
                     try:
                         for child in sorted(entry.iterdir(),
                                             key=lambda p: p.name.lower()):
                             if not child.name.startswith(".") and _is_song(child):
-                                kids.append(_meta(child))
+                                kids.append(_meta(child, dlc))
                     except PermissionError:
                         log.warning("permission denied: %s", entry)
                     if kids:

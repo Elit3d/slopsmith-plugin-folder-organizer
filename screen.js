@@ -80,9 +80,9 @@ function _filtered() {
 
 // ── Song row ──────────────────────────────────────────────────────────
 function _songRow(song) {
-    const row = document.createElement('button');
+    const row = document.createElement('div');
     row.className = [
-        'w-full flex items-center gap-3 px-3 py-2 rounded text-left',
+        'w-full flex items-center gap-3 px-3 py-2 rounded cursor-pointer',
         'hover:bg-dark-500 group transition-colors duration-100',
     ].join(' ');
     row.dataset.filename = song.filename;
