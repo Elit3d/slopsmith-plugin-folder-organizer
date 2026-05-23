@@ -1,6 +1,8 @@
 """
 Folder Browser plugin — routes.py
 Scans the sloppak DLC directory and returns a folder-grouped song tree.
+Groups songs by the immediate subfolder they sit in, so the user can
+organise songs simply by creating folders.
 """
 
 from pathlib import Path
@@ -14,16 +16,18 @@ def setup(app, context):
 
     # ── helpers ──────────────────────────────────────────────────────────
 
-    def _dlc_dir() -> Path | None:
-        """Prefer the sloppak source dir; fall back to the main DLC dir."""
+    def _scan_root() -> Path | None:
+        """
+        Find the best directory to scan. Try these in order:
+          1. <dlc_dir>/sloppak/   (desktop app default)
+          2. <dlc_dir>/           (fallback)
+        """
         try:
-            d = context.get("get_sloppak_cache_dir", lambda: None)()
-            if d and Path(d).exists():
-                return Path(d)
-        except Exception:
-            pass
-        try:
-            return Path(context["get_dlc_dir"]())
+            dlc = Path(context["get_dlc_dir"]())
+            sloppak = dlc / "sloppak"
+            if sloppak.exists():
+                return sloppak
+            return dlc
         except Exception:
             return None
 
@@ -56,27 +60,37 @@ def setup(app, context):
     @router.get("/tree")
     def get_tree():
         """
+        Scans <sloppak_dir>/ one level deep.
+        Songs directly in the root → root_songs ("Unsorted").
+        Songs inside a subfolder → that folder's entry.
+
         {
           "folders": [{"name": str, "songs": [meta, ...]}, ...],
           "root_songs": [meta, ...]
         }
         """
-        dlc = _dlc_dir()
-        if not dlc or not dlc.exists():
-            log.warning("folder_browser: DLC dir not found (%s)", dlc)
+        root = _scan_root()
+        if not root or not root.exists():
+            log.warning("folder_browser: scan root not found (%s)", root)
             return JSONResponse({"folders": [], "root_songs": [],
                                  "error": "DLC directory not found"})
+
+        log.info("folder_browser: scanning %s", root)
 
         folders: dict[str, list] = {}
         root_songs: list = []
 
         try:
-            for entry in sorted(dlc.iterdir(), key=lambda p: p.name.lower()):
+            for entry in sorted(root.iterdir(), key=lambda p: p.name.lower()):
                 if entry.name.startswith("."):
                     continue
+
                 if _is_song(entry):
+                    # Song sitting directly in the scan root
                     root_songs.append(_meta(entry))
+
                 elif entry.is_dir():
+                    # Subfolder — collect songs one level inside it
                     kids = []
                     try:
                         for child in sorted(entry.iterdir(),
@@ -87,8 +101,9 @@ def setup(app, context):
                         log.warning("permission denied: %s", entry)
                     if kids:
                         folders[entry.name] = kids
+
         except PermissionError:
-            log.error("permission denied reading DLC dir: %s", dlc)
+            log.error("permission denied reading scan root: %s", root)
             return JSONResponse({"folders": [], "root_songs": [],
                                  "error": "Permission denied"})
 

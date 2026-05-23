@@ -269,6 +269,13 @@ function _init() {
 
     if (!search) return;   // screen HTML not in DOM yet
 
+    // Close the nav plugin dropdown if it is still open — it sits at z-50
+    // and blocks clicks on our screen (search bar, song rows, etc.).
+    var dropdown = _el('plugin-dropdown');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        dropdown.classList.add('hidden');
+    }
+
     search.addEventListener('input', function (e) {
         _query = e.target.value.trim();
         _render();
@@ -289,9 +296,19 @@ function _init() {
 
 // ── React to screen changes (from app_tour_library/script.js pattern) ─
 // Use slopsmith event bus — same as how the tour plugin watches screens.
+function _closeDropdown() {
+    var dropdown = _el('plugin-dropdown');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        dropdown.classList.add('hidden');
+    }
+}
+
 function _onScreenChanged(ev) {
     const id = ev && ev.detail && ev.detail.id;
-    if (id === SCREEN_ID && !_loaded) _load();
+    if (id === SCREEN_ID) {
+        _closeDropdown();
+        if (!_loaded) _load();
+    }
 }
 
 if (window.slopsmith && typeof window.slopsmith.on === 'function') {

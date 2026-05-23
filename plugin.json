@@ -1,7 +1,7 @@
 {
   "id": "folder_browser",
   "name": "Folder Browser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "nav": { "label": "Folders", "screen": "plugin-folder_browser" },
   "screen": "screen.html",
