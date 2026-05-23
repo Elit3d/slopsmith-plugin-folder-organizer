@@ -421,10 +421,8 @@ function _render() {
         frag.appendChild(emp);
     }
 
-    const prevScroll = parseInt(_store('scroll') || '0', 10);
     treeEl.innerHTML = '';
     treeEl.appendChild(frag);
-    if (!_query) treeEl.scrollTop = prevScroll;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
@@ -457,10 +455,6 @@ function _init() {
     expandAll.addEventListener('click', _expandAll);
     collapseAll.addEventListener('click', _collapseAll);
     newFolder.addEventListener('click', _createFolder);
-
-    treeEl.addEventListener('scroll', function () {
-        _store('scroll', treeEl.scrollTop);
-    }, { passive: true });
 
     if (!_loaded) _load();
 }
