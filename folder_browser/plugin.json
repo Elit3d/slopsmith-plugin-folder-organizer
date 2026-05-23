@@ -1,0 +1,10 @@
+{
+  "id": "folder_browser",
+  "name": "Folder Browser",
+  "version": "1.0.0",
+  "private": true,
+  "nav": { "label": "Folders", "screen": "plugin-folder_browser" },
+  "screen": "screen.html",
+  "script": "screen.js",
+  "routes": "routes.py"
+}
