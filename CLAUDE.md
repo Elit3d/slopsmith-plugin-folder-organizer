@@ -16,7 +16,7 @@ screen.js       Frontend logic — renders folder tree, search, expand/collapse,
 This plugin follows the standard Slopsmith plugin pattern (see the main Slopsmith `CLAUDE.md` for the full plugin system reference).
 
 - **Backend** (`routes.py`) — registers routes under `GET/POST /api/plugin/folder_organizer/`. Uses `context["get_dlc_dir"]()` and `context["extract_meta"]()`. Scans `<dlc>/sloppak/` if it exists, otherwise `<dlc>/`. Returns a folder tree and handles create/rename/delete folder and move song operations.
-- **Frontend** (`screen.js`) — plain vanilla JS in an IIFE. Fetches the tree from the backend on screen load, renders collapsible folder sections and song rows. Uses `window.slopsmith.on('screen:changed', ...)` to trigger load when the user navigates here. Calls `window.playSong(filename)` on song click with the full relative path from the DLC root.
+- **Frontend** (`screen.js`) — plain vanilla JS in an IIFE. Fetches the tree from the backend on screen load, renders collapsible folder sections and song rows or cards (grid view). Uses `window.slopsmith.on('screen:changed', ...)` to trigger load when the user navigates here. Calls `window.playSong(filename)` on song click with the full relative path from the DLC root.
 - **No dependencies** — no npm, no build step. Tailwind utility classes available globally from the Slopsmith host.
 
 ## Critical Layout Lessons (Hard-Won)
@@ -48,7 +48,7 @@ Slopsmith automatically creates `<div id="plugin-folder_organizer" class="screen
 The navbar sits at `top:0, z-index:50`. Plugin toolbars must use `position:fixed; top:64px; z-index:40` to sit below the navbar. Use a solid `background-color` (not Tailwind bg classes — those may not apply correctly) to prevent content showing through.
 
 ### 4. Content must have padding-top to clear the fixed toolbar
-Since the toolbar is `position:fixed`, it floats above the content. The content container needs `padding-top: 80px` to ensure the first item isn't hidden behind the toolbar.
+Since the toolbar is `position:fixed`, it floats above the content. The content container needs `padding-top: 120px` to ensure the first item isn't hidden behind the toolbar. This accounts for the Slopsmith navbar (64px) plus the plugin toolbar height (~56px). Adding more toolbar buttons increases this height, so if content is clipped, increase the padding further.
 
 ### 5. Electron blocks window.prompt() and window.confirm()
 The Slopsmith desktop app is built on Electron which throws `Error: prompt() is not supported`. Use a custom inline modal instead. See `_showModal()` in `screen.js` for the implementation — it returns a Promise and supports both text input and confirm modes.
@@ -113,11 +113,24 @@ Each song object returned by `/tree`:
 
 To add more grouping options (by artist, album, etc.), modify `get_tree()` in `routes.py` to use a different key than `entry.name`.
 
+## View Modes (List / Grid)
+
+The toolbar has a list/grid toggle. Current view is stored in `localStorage` under `fo:view` (`'list'` or `'grid'`).
+
+- **List view** — uses `_songRow()`, renders inside a `ml-5 space-y-0` div
+- **Grid view** — uses `_songCard()`, renders inside a CSS grid div (`auto-fill, minmax(150px,1fr)`)
+- Both `_folderSection()` and `_unsortedSection()` branch on `_view` to pick the right renderer and container
+- Album art is fetched via `/api/art/<encoded-filename>`. On error the `<img>` is hidden and a placeholder SVG is shown instead
+- The collapse/expand toggle correctly restores `display:grid` (not just `display:''`) when reopening a folder in grid mode — always check this when changing the toggle logic
+
+### 10. Use inline styles for grid layout, not Tailwind
+Tailwind's `grid` and `grid-cols-*` classes may not apply reliably inside the plugin div. Use `element.style.cssText` with explicit `display:grid; grid-template-columns:...` for the grid container.
+
 ## Extending This Plugin
 
 **Add sorting within folders** — songs are sorted by filename. To sort by title, call `sorted(kids, key=lambda s: s["title"] or "")` after building the kids list.
 
-**Add album art thumbnails** — hit `/api/art/<filename>` and set as an `<img>` in `_songRow()`.
+**Add album art thumbnails** — hit `/api/art/<filename>` and set as an `<img>` in `_songCard()`. Already implemented in grid view.
 
 **Add nested subfolders** — currently one level deep. Make `get_tree()` recursive and update `_folderSection()` to render children.
 
