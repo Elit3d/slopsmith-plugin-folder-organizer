@@ -432,6 +432,10 @@ function _onDragUp(e) {
     }
 }
 
+function _onDragKeyDown(e) {
+    if (e.key === 'Escape') _endPointerDrag();
+}
+
 function _endPointerDrag() {
     if (_dragRafId) { cancelAnimationFrame(_dragRafId); _dragRafId = null; }
     if (_dragState && _dragState.ghost) _dragState.ghost.remove();
@@ -440,6 +444,7 @@ function _endPointerDrag() {
     _dragState = null;
     document.removeEventListener('mousemove', _onDragMove);
     document.removeEventListener('mouseup', _onDragUp);
+    document.removeEventListener('keydown', _onDragKeyDown);
 }
 
 async function _executeDrop(data, targetFolder) {
@@ -485,6 +490,7 @@ function _makeDraggable(el, song, folderName) {
         };
         document.addEventListener('mousemove', _onDragMove);
         document.addEventListener('mouseup', _onDragUp);
+        document.addEventListener('keydown', _onDragKeyDown);
     });
     el.addEventListener('dragstart', function (e) { e.preventDefault(); });
 }
