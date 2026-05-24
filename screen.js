@@ -40,8 +40,9 @@ var _filtersRaw = _storeJSON('filters') || {};
 let _filters = {
     arrangements: _filtersRaw.arrangements || {},
     stems:        _filtersRaw.stems        || {},
-    lyrics:       _filtersRaw.lyrics       || 'any',
-    tunings:      _filtersRaw.tunings      || [],
+    // normalise legacy 'any'/'require'/'exclude' values from older saves
+    lyrics:  (_filtersRaw.lyrics === 'require' || _filtersRaw.lyrics === 'on') ? 'on' : 'off',
+    tunings: _filtersRaw.tunings || [],
 };
 
 // ── DOM helpers ───────────────────────────────────────────────────────
@@ -92,6 +93,9 @@ async function _load() {
         _loaded = true;
         _status('');
         _render();
+        // Rebuild filter panel if it's open so tuning list reflects new data
+        var fp = _el('fb-filter-panel');
+        if (fp && fp.style.display !== 'none') _buildFilterPanel();
     } catch (err) {
         _status('Load failed: ' + err.message, true);
     }
@@ -130,34 +134,36 @@ function _saveFilters() {
 
 function _activeFilterCount() {
     var n = 0;
-    Object.values(_filters.arrangements).forEach(function (v) { if (v !== 'any') n++; });
-    Object.values(_filters.stems).forEach(function (v) { if (v !== 'any') n++; });
-    if (_filters.lyrics !== 'any') n++;
+    var arrVals = _filters.arrangements || {};
+    for (var a in arrVals) { if (arrVals[a] === 'on') n++; }
+    var stemVals = _filters.stems || {};
+    for (var s in stemVals) { if (stemVals[s] === 'on') n++; }
+    if (_filters.lyrics === 'on') n++;
     n += (_filters.tunings || []).length;
     return n;
 }
 
 function _matchFilters(song) {
-    // Arrangements
-    var arr = song.arrangements || [];
+    // Arrangements — each active pill means song MUST have that arrangement
     var arrF = _filters.arrangements || {};
+    var songArr = song.arrangements || [];
     for (var a in arrF) {
-        if (arrF[a] === 'require' && arr.indexOf(a) === -1) return false;
-        if (arrF[a] === 'exclude' && arr.indexOf(a) !== -1) return false;
+        if (arrF[a] === 'on' && songArr.indexOf(a) === -1) return false;
     }
-    // Stems
-    var stems = song.stems || [];
+    // Stems — each active pill means song MUST have that stem
     var stemsF = _filters.stems || {};
+    var songStems = song.stems || [];
     for (var s in stemsF) {
-        if (stemsF[s] === 'require' && stems.indexOf(s) === -1) return false;
-        if (stemsF[s] === 'exclude' && stems.indexOf(s) !== -1) return false;
+        if (stemsF[s] === 'on' && songStems.indexOf(s) === -1) return false;
     }
     // Lyrics
-    if (_filters.lyrics === 'require' && !song.lyrics) return false;
-    if (_filters.lyrics === 'exclude' &&  song.lyrics) return false;
-    // Tunings
+    if (_filters.lyrics === 'on' && !song.lyrics) return false;
+    // Tunings — song must match one of the selected tunings
     var tunings = _filters.tunings || [];
-    if (tunings.length && tunings.indexOf(song.tuning) === -1) return false;
+    if (tunings.length) {
+        var t = (song.tuning || '').trim();
+        if (!t || tunings.indexOf(t) === -1) return false;
+    }
     return true;
 }
 
@@ -168,35 +174,25 @@ function _getTunings() {
         _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
     );
     allSongs.forEach(function (s) {
-        if (s.tuning) counts[s.tuning] = (counts[s.tuning] || 0) + 1;
+        var t = s.tuning ? String(s.tuning).trim() : '';
+        if (t) counts[t] = (counts[t] || 0) + 1;
     });
     return Object.keys(counts)
-        .sort(function (a, b) { return counts[b] - counts[a]; })
+        .sort(function (a, b) { return a.localeCompare(b); }) // alphabetical
         .map(function (t) { return { tuning: t, count: counts[t] }; });
 }
 
-function _cyclePillState(cur) {
-    return cur === 'any' ? 'require' : cur === 'require' ? 'exclude' : 'any';
-}
-
-function _applyPillStyle(el, state) {
-    if (state === 'require') {
-        el.style.background   = '#1d4ed8';
-        el.style.borderColor  = '#2563eb';
-        el.style.color        = '#fff';
-    } else if (state === 'exclude') {
-        el.style.background   = '#7f1d1d';
-        el.style.borderColor  = '#991b1b';
-        el.style.color        = '#fca5a5';
+// Pill is a simple on/off toggle — no three-way cycle
+function _applyPillStyle(el, on) {
+    if (on) {
+        el.style.background  = '#1d4ed8';
+        el.style.borderColor = '#2563eb';
+        el.style.color       = '#fff';
     } else {
-        el.style.background   = 'transparent';
-        el.style.borderColor  = '#374151';
-        el.style.color        = '#6b7280';
+        el.style.background  = 'transparent';
+        el.style.borderColor = '#374151';
+        el.style.color       = '#6b7280';
     }
-}
-
-function _pillLabel(state, name) {
-    return (state === 'require' ? '✓ ' : state === 'exclude' ? '✕ ' : '') + name;
 }
 
 function _updateFilterBadge() {
@@ -208,38 +204,30 @@ function _updateFilterBadge() {
 }
 
 // ── Filter panel sections ─────────────────────────────────────────────
-function _makePillSection(sectionTitle, subtitle, items, filterKey) {
+function _makePillSection(sectionTitle, items, filterKey) {
     var section = document.createElement('div');
     section.style.marginBottom = '20px';
 
     var hdr = document.createElement('div');
-    hdr.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; margin-bottom:4px;';
+    hdr.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; margin-bottom:8px;';
     hdr.textContent = sectionTitle;
     section.appendChild(hdr);
-
-    if (subtitle) {
-        var sub = document.createElement('div');
-        sub.style.cssText = 'font-size:11px; color:#4b5563; margin-bottom:8px;';
-        sub.textContent = subtitle;
-        section.appendChild(sub);
-    }
 
     var pills = document.createElement('div');
     pills.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px;';
 
     items.forEach(function (item) {
-        var state = (_filters[filterKey] || {})[item] || 'any';
+        var on = ((_filters[filterKey] || {})[item] === 'on');
         var pill = document.createElement('button');
         pill.style.cssText = 'padding:4px 12px; border-radius:20px; border:1px solid; font-size:12px; cursor:pointer;';
-        _applyPillStyle(pill, state);
-        pill.textContent = _pillLabel(state, item);
+        _applyPillStyle(pill, on);
+        pill.textContent = item;
         pill.addEventListener('click', function () {
             if (!_filters[filterKey]) _filters[filterKey] = {};
-            var next = _cyclePillState((_filters[filterKey][item] || 'any'));
-            _filters[filterKey][item] = next;
+            on = !on;
+            _filters[filterKey][item] = on ? 'on' : 'off';
             _saveFilters();
-            _applyPillStyle(pill, next);
-            pill.textContent = _pillLabel(next, item);
+            _applyPillStyle(pill, on);
             _updateFilterBadge();
             _render();
         });
@@ -259,17 +247,16 @@ function _makeLyricsSection() {
     hdr.textContent = 'LYRICS';
     section.appendChild(hdr);
 
-    var state = _filters.lyrics || 'any';
+    var on = (_filters.lyrics === 'on');
     var pill = document.createElement('button');
     pill.style.cssText = 'padding:4px 12px; border-radius:20px; border:1px solid; font-size:12px; cursor:pointer;';
-    _applyPillStyle(pill, state);
-    pill.textContent = _pillLabel(state, 'Lyrics');
+    _applyPillStyle(pill, on);
+    pill.textContent = 'Lyrics';
     pill.addEventListener('click', function () {
-        var next = _cyclePillState(_filters.lyrics || 'any');
-        _filters.lyrics = next;
+        on = !on;
+        _filters.lyrics = on ? 'on' : 'off';
         _saveFilters();
-        _applyPillStyle(pill, next);
-        pill.textContent = _pillLabel(next, 'Lyrics');
+        _applyPillStyle(pill, on);
         _updateFilterBadge();
         _render();
     });
@@ -373,8 +360,8 @@ function _buildFilterPanel() {
     // scrollable content
     var content = document.createElement('div');
     content.style.cssText = 'overflow-y:auto; flex:1; padding:16px 20px;';
-    content.appendChild(_makePillSection('ARRANGEMENTS', 'Click cycles: any → require → exclude', _ARRANGEMENTS, 'arrangements'));
-    content.appendChild(_makePillSection('STEMS (sloppak)', 'Click cycles: any → require → exclude', _STEMS, 'stems'));
+    content.appendChild(_makePillSection('ARRANGEMENTS', _ARRANGEMENTS, 'arrangements'));
+    content.appendChild(_makePillSection('STEMS (sloppak)', _STEMS, 'stems'));
     content.appendChild(_makeLyricsSection());
     content.appendChild(_makeTuningSection());
     panel.appendChild(content);
@@ -386,7 +373,7 @@ function _buildFilterPanel() {
     clearBtn.style.cssText = 'font-size:13px; color:#6b7280; background:none; border:none; cursor:pointer; padding:0;';
     clearBtn.textContent = 'Clear all';
     clearBtn.addEventListener('click', function () {
-        _filters = { arrangements: {}, stems: {}, lyrics: 'any', tunings: [] };
+        _filters = { arrangements: {}, stems: {}, lyrics: 'off', tunings: [] };
         _saveFilters();
         _updateFilterBadge();
         _render();
