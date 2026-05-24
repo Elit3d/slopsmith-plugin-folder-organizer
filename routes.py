@@ -64,20 +64,32 @@ def setup(app, context):
                 m["duration"] = raw.get("duration")
                 m["year"]     = raw.get("year")
                 m["tuning"]   = raw.get("tuning")
-                # arrangements — expect a list e.g. ["Lead", "Rhythm"]
+
+                # arrangements — objects with a "name" key e.g. [{name:"Lead",...}, ...]
                 raw_arr = raw.get("arrangements") or []
-                m["arrangements"] = list(raw_arr) if isinstance(raw_arr, (list, tuple)) \
-                    else ([raw_arr] if raw_arr else [])
-                # stems — expect a list e.g. ["Drums", "Vocals"]
-                raw_stems = raw.get("stems") or []
-                m["stems"] = list(raw_stems) if isinstance(raw_stems, (list, tuple)) \
-                    else ([raw_stems] if raw_stems else [])
-                # lyrics — boolean or truthy string
-                lyr = raw.get("lyrics") or raw.get("hasLyrics") or False
-                if isinstance(lyr, str):
-                    m["lyrics"] = lyr.lower() not in ('', 'false', 'no', '0')
-                else:
-                    m["lyrics"] = bool(lyr)
+                if isinstance(raw_arr, (list, tuple)):
+                    m["arrangements"] = [
+                        a["name"] if isinstance(a, dict) else str(a)
+                        for a in raw_arr
+                        if (isinstance(a, dict) and "name" in a) or isinstance(a, str)
+                    ]
+
+                # stems — try common key variants
+                for _key in ("stems", "stem_types", "available_stems", "stem_names", "stemTypes"):
+                    _val = raw.get(_key)
+                    if _val:
+                        m["stems"] = list(_val) if isinstance(_val, (list, tuple)) else [str(_val)]
+                        break
+
+                # lyrics — try common key variants
+                for _key in ("lyrics", "hasLyrics", "has_lyrics", "lyric", "hasLyric"):
+                    _val = raw.get(_key)
+                    if _val is not None:
+                        if isinstance(_val, str):
+                            m["lyrics"] = _val.lower() not in ("", "false", "no", "0")
+                        else:
+                            m["lyrics"] = bool(_val)
+                        break
         except Exception as exc:
             log.debug("meta failed for %s: %s", p.name, exc)
         if not m["title"]:
