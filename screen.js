@@ -30,6 +30,7 @@ let _query       = '';
 let _loaded      = false;
 let _view        = _store('view') || 'list'; // 'list' | 'grid'
 let _sort        = _store('sort') || 'default'; // 'default' | 'title' | 'artist' | 'duration'
+let _sortDir     = _store('sortDir') || 'asc';  // 'asc' | 'desc'
 
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
@@ -122,6 +123,7 @@ function _sortSongs(songs) {
             return (a.duration || 0) - (b.duration || 0);
         });
     }
+    if (_sortDir === 'desc') arr.reverse();
     return arr;
 }
 
@@ -856,12 +858,42 @@ function _init() {
         _render();
     });
 
-    const sortSel = _el('fb-sort');
+    const sortSel    = _el('fb-sort');
+    const sortDirBtn = _el('fb-sort-dir');
+    const sortDirIco = _el('fb-sort-dir-icon');
+
+    function _updateSortDir() {
+        if (!sortDirBtn) return;
+        var isAsc = _sortDir === 'asc';
+        var active = _sort !== 'default';
+        sortDirBtn.title = isAsc ? 'Ascending' : 'Descending';
+        sortDirBtn.style.opacity = active ? '' : '0.35';
+        sortDirBtn.style.cursor  = active ? '' : 'default';
+        if (sortDirIco) {
+            // up chevron for asc, down chevron for desc
+            sortDirIco.innerHTML = isAsc
+                ? '<path d="M5 12l5-5 5 5"/>'
+                : '<path d="M5 8l5 5 5-5"/>';
+        }
+    }
+    _updateSortDir();
+
     if (sortSel) {
         sortSel.value = _sort;
         sortSel.addEventListener('change', function () {
             _sort = sortSel.value;
             _store('sort', _sort);
+            _updateSortDir();
+            _render();
+        });
+    }
+
+    if (sortDirBtn) {
+        sortDirBtn.addEventListener('click', function () {
+            if (_sort === 'default') return;
+            _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+            _store('sortDir', _sortDir);
+            _updateSortDir();
             _render();
         });
     }
