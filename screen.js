@@ -35,7 +35,9 @@ function _el(id) { return document.getElementById(id); }
 // ── Force screen to have height (Slopsmith .screen has no height set) ─
 function _fixHeight() {
     const el = document.getElementById('plugin-' + PLUGIN_ID);
-    if (el) el.style.minHeight = window.innerHeight + 'px';
+    const nav = document.querySelector('nav');
+    const navH = nav ? nav.offsetHeight : 64;
+    if (el) el.style.minHeight = (window.innerHeight - navH) + 'px';
 }
 
 // ── Close the nav plugin dropdown (it sits at z-50 and blocks clicks) ─
