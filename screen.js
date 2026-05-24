@@ -468,6 +468,7 @@ function _folderSection(folder) {
         folder.songs.forEach(s => list.appendChild(_songRow(s, folder.name)));
     }
     if (!open) list.style.display = 'none';
+    _makeDropTarget(list, folder.name);
 
     hdr.addEventListener('click', function () {
         if (_query) return;
@@ -533,6 +534,7 @@ function _unsortedSection(songs) {
         songs.forEach(s => list.appendChild(_songRow(s, '')));
     }
     if (!_unsortedOpen) list.style.display = 'none';
+    _makeDropTarget(list, '');
 
     hdr.addEventListener('click', function () {
         if (_query) return;
