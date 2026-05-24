@@ -4,21 +4,21 @@
 (function () {
 'use strict';
 
-const PLUGIN_ID  = 'folder_browser';
+const PLUGIN_ID  = 'folder_organizer';
 const SCREEN_ID  = 'plugin-' + PLUGIN_ID;
 const API        = '/api/plugin/folder_browser';
 
 // ── Safe localStorage helpers ─────────────────────────────────────────
 function _store(key, val) {
     try {
-        if (val === undefined) return localStorage.getItem('fb:' + key);
-        localStorage.setItem('fb:' + key, val);
+        if (val === undefined) return localStorage.getItem('fo:' + key);
+        localStorage.setItem('fo:' + key, val);
     } catch (_) { return null; }
 }
 function _storeJSON(key, val) {
     try {
-        if (val === undefined) return JSON.parse(localStorage.getItem('fb:' + key) || 'null');
-        localStorage.setItem('fb:' + key, JSON.stringify(val));
+        if (val === undefined) return JSON.parse(localStorage.getItem('fo:' + key) || 'null');
+        localStorage.setItem('fo:' + key, JSON.stringify(val));
     } catch (_) { return null; }
 }
 
