@@ -28,6 +28,7 @@ let _openFolders = new Set(_storeJSON('open') || []);
 let _unsortedOpen = _store('unsorted_open') !== 'false';
 let _query       = '';
 let _loaded      = false;
+let _view        = _store('view') || 'list'; // 'list' | 'grid'
 
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
@@ -144,6 +145,93 @@ function _showModal(msg, withInput, defaultVal) {
 
 function _confirm(msg)         { return _showModal(msg, false, ''); }
 function _prompt(msg, def)     { return _showModal(msg, true,  def || ''); }
+
+// ── Song card (grid view) ─────────────────────────────────────────────
+function _songCard(song, folderName) {
+    const card = document.createElement('div');
+    card.className = 'flex flex-col rounded-lg overflow-hidden cursor-pointer group transition-transform duration-100 hover:scale-105';
+    card.style.background = '#1a1d2e';
+    card.dataset.filename = song.filename;
+
+    // art
+    const artWrap = document.createElement('div');
+    artWrap.style.cssText = 'position:relative; width:100%; padding-bottom:100%; background:#111827; overflow:hidden;';
+
+    const img = document.createElement('img');
+    img.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; object-fit:cover;';
+    img.src = '/api/art/' + encodeURIComponent(song.filename);
+    img.alt = '';
+
+    // placeholder shown while loading or on error
+    const placeholder = document.createElement('div');
+    placeholder.style.cssText = 'position:absolute; inset:0; display:flex; align-items:center; justify-content:center;';
+    placeholder.innerHTML = `<svg viewBox="0 0 48 48" fill="none" stroke="#374151" stroke-width="1.5" style="width:40px;height:40px">
+        <path d="M6 12a4 4 0 014-4h4l4 4h16a4 4 0 014 4v16a4 4 0 01-4 4H10a4 4 0 01-4-4V12z"/>
+        <circle cx="20" cy="26" r="3"/><path d="M23 26v-8l8-2v8"/><circle cx="31" cy="24" r="3"/>
+    </svg>`;
+
+    img.addEventListener('error', function () {
+        img.style.display = 'none';
+        placeholder.style.display = 'flex';
+    });
+    img.addEventListener('load', function () {
+        placeholder.style.display = 'none';
+    });
+
+    // duration badge
+    if (song.duration != null) {
+        const badge = document.createElement('span');
+        badge.style.cssText = 'position:absolute; bottom:6px; right:6px; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; color:#e5e7eb; background:rgba(0,0,0,0.7);';
+        const m = Math.floor(song.duration / 60);
+        const s = String(Math.floor(song.duration % 60)).padStart(2, '0');
+        badge.textContent = m + ':' + s;
+        artWrap.appendChild(badge);
+    }
+
+    artWrap.appendChild(placeholder);
+    artWrap.appendChild(img);
+
+    // meta
+    const meta = document.createElement('div');
+    meta.style.cssText = 'padding:8px 10px 10px; flex:1; min-width:0;';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:13px; font-weight:600; color:#e5e7eb; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+    title.textContent = song.title || song.filename;
+
+    const sub = document.createElement('div');
+    sub.style.cssText = 'font-size:11px; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;';
+    sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
+
+    // move button
+    const moveBtn = document.createElement('button');
+    moveBtn.style.cssText = 'position:absolute; top:6px; right:6px; padding:4px; border-radius:4px; background:rgba(0,0,0,0.6); color:#9ca3af; border:none; cursor:pointer; display:none;';
+    moveBtn.title = 'Move to folder…';
+    moveBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" style="width:12px;height:12px">
+        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+        <path fill-rule="evenodd" d="M10 11a1 1 0 011 1v2h2a1 1 0 110 2h-2v2a1 1 0 11-2 0v-2H7a1 1 0 110-2h2v-2a1 1 0 011-1z" clip-rule="evenodd"/>
+    </svg>`;
+    card.addEventListener('mouseenter', function () { moveBtn.style.display = 'block'; });
+    card.addEventListener('mouseleave', function () { moveBtn.style.display = 'none'; });
+    moveBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _moveSong(song, folderName);
+    });
+
+    artWrap.style.position = 'relative';
+    artWrap.appendChild(moveBtn);
+
+    meta.appendChild(title);
+    meta.appendChild(sub);
+    card.appendChild(artWrap);
+    card.appendChild(meta);
+
+    card.addEventListener('click', function () {
+        if (typeof window.playSong === 'function') window.playSong(song.filename);
+    });
+
+    return card;
+}
 
 // ── Song row ──────────────────────────────────────────────────────────
 function _songRow(song, folderName) {
@@ -301,16 +389,21 @@ function _folderSection(folder) {
     hdr.appendChild(renameBtn);
     hdr.appendChild(delBtn);
 
-    // song list
+    // song list/grid
     const list = document.createElement('div');
-    list.className = 'ml-5 mt-0.5 space-y-0';
-    list.style.display = open ? '' : 'none';
-    folder.songs.forEach(s => list.appendChild(_songRow(s, folder.name)));
+    if (_view === 'grid') {
+        list.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; padding:8px 4px 8px 24px;';
+        folder.songs.forEach(s => list.appendChild(_songCard(s, folder.name)));
+    } else {
+        list.className = 'ml-5 mt-0.5 space-y-0';
+        folder.songs.forEach(s => list.appendChild(_songRow(s, folder.name)));
+    }
+    if (!open) list.style.display = 'none';
 
     hdr.addEventListener('click', function () {
         if (_query) return;
         const nowOpen = list.style.display === 'none';
-        list.style.display = nowOpen ? '' : 'none';
+        list.style.display = nowOpen ? (_view === 'grid' ? 'grid' : '') : 'none';
         chev.style.transform = nowOpen ? 'rotate(90deg)' : '';
         if (nowOpen) _openFolders.add(folder.name);
         else         _openFolders.delete(folder.name);
@@ -361,14 +454,19 @@ function _unsortedSection(songs) {
     hdr.appendChild(cnt);
 
     const list = document.createElement('div');
-    list.className = 'ml-5 mt-0.5 space-y-0';
-    list.style.display = _unsortedOpen ? '' : 'none';
-    songs.forEach(s => list.appendChild(_songRow(s, '')));
+    if (_view === 'grid') {
+        list.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; padding:8px 4px 8px 24px;';
+        songs.forEach(s => list.appendChild(_songCard(s, '')));
+    } else {
+        list.className = 'ml-5 mt-0.5 space-y-0';
+        songs.forEach(s => list.appendChild(_songRow(s, '')));
+    }
+    if (!_unsortedOpen) list.style.display = 'none';
 
     hdr.addEventListener('click', function () {
         if (_query) return;
         _unsortedOpen = list.style.display === 'none';
-        list.style.display = _unsortedOpen ? '' : 'none';
+        list.style.display = _unsortedOpen ? (_view === 'grid' ? 'grid' : '') : 'none';
         chev.style.transform = _unsortedOpen ? 'rotate(90deg)' : '';
         _store('unsorted_open', String(_unsortedOpen));
     });
@@ -482,6 +580,8 @@ function _init() {
     const expandAll   = _el('fb-expand-all');
     const collapseAll = _el('fb-collapse-all');
     const newFolder   = _el('fb-new-folder');
+    const viewList    = _el('fb-view-list');
+    const viewGrid    = _el('fb-view-grid');
     const treeEl      = _el('fb-tree');
 
     if (!search) return;
@@ -489,6 +589,30 @@ function _init() {
     // Force the search bar above any overlay
     search.style.position = 'relative';
     search.style.zIndex   = '100';
+
+    function _updateViewButtons() {
+        if (!viewList || !viewGrid) return;
+        viewList.style.color = _view === 'list' ? '#ffffff' : '';
+        viewList.style.background = _view === 'list' ? '#1f2937' : '';
+        viewGrid.style.color = _view === 'grid' ? '#ffffff' : '';
+        viewGrid.style.background = _view === 'grid' ? '#1f2937' : '';
+    }
+    _updateViewButtons();
+
+    if (viewList) viewList.addEventListener('click', function () {
+        if (_view === 'list') return;
+        _view = 'list';
+        _store('view', 'list');
+        _updateViewButtons();
+        _render();
+    });
+    if (viewGrid) viewGrid.addEventListener('click', function () {
+        if (_view === 'grid') return;
+        _view = 'grid';
+        _store('view', 'grid');
+        _updateViewButtons();
+        _render();
+    });
 
     search.addEventListener('input', function (e) {
         _query = e.target.value.trim();
