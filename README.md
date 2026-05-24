@@ -1,6 +1,6 @@
 # Folder Organizer — Slopsmith Plugin
 
-![Version](https://img.shields.io/badge/version-1.4.4-blue)
+![Version](https://img.shields.io/badge/version-1.4.5-blue)
 ![Platform](https://img.shields.io/badge/platform-Slopsmith%20Desktop-darkblue)
 ![Slopsmith](https://img.shields.io/badge/requires-Slopsmith%20v0.2.9+-orange)
 
@@ -64,6 +64,28 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 | Delete a folder | Hover the folder header → click the trash icon |
 | Move a song | Hover the song row → click the folder icon |
 | Expand / collapse a folder | Click the folder header |
+
+---
+
+## Changelog
+
+### v1.4
+- List view with album art thumbnails on every song row
+- Grid view with full album art cards
+- List/grid toggle in the toolbar, preference saved across sessions
+
+### v1.3
+- Folder management — create, rename, and delete folders directly in the UI
+- Move songs between folders via the hover menu
+
+### v1.0
+- Initial release
+- Folder tree view grouped by DLC subfolder name
+- Collapsible folders with state saved across sessions
+- Live search filtering by title, artist, album, or filename
+- One-click playback
+- Expand All / Collapse All
+- `/` keyboard shortcut to focus search
 
 ---
 
