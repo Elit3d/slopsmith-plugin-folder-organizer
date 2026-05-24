@@ -97,6 +97,8 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 - [ ] Auto play song on hover (ability to turn this function on/off)
 - [ ] Bulk move — select multiple songs and move them at once
 - [ ] Thumbnail performance — faster loading and smoother scrolling with large song libraries
+- [ ] Adjustable thumbnail and row sizes — resize song cards and list rows to suit your preference
+- [ ] Custom themes — switch between colour schemes to match your style
 
 ---
 
