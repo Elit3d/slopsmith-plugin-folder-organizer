@@ -322,6 +322,41 @@ function _songRow(song, folderName) {
     return row;
 }
 
+// ── Auto-scroll during drag ───────────────────────────────────────────
+(function () {
+    var _rafId = null;
+    var _scrollSpeed = 0;
+    var ZONE = 120;
+    var MAX_SPEED = 18;
+
+    function _tick() {
+        if (_scrollSpeed !== 0) window.scrollBy(0, _scrollSpeed);
+        _rafId = requestAnimationFrame(_tick);
+    }
+
+    document.addEventListener('dragover', function (e) {
+        var y = e.clientY;
+        var h = window.innerHeight;
+        if (y < ZONE) {
+            _scrollSpeed = -MAX_SPEED * (1 - y / ZONE);
+        } else if (y > h - ZONE) {
+            _scrollSpeed = MAX_SPEED * (1 - (h - y) / ZONE);
+        } else {
+            _scrollSpeed = 0;
+        }
+        if (!_rafId) _rafId = requestAnimationFrame(_tick);
+    });
+
+    document.addEventListener('dragend', function () {
+        _scrollSpeed = 0;
+        if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+    });
+    document.addEventListener('drop', function () {
+        _scrollSpeed = 0;
+        if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+    });
+})();
+
 // ── Drag and drop ─────────────────────────────────────────────────────
 function _makeDraggable(el, song, folderName) {
     el.draggable = true;
