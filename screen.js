@@ -333,9 +333,9 @@ let _dragCurrentTarget = null;
 
 const _DRAG_THRESH = 5;
 const _DRAG_ZONE   = 150;
-const _DRAG_SPEED  = 25;
+const _DRAG_SPEED  = 50;
 
-let _dragScrollInterval = null;
+let _dragRafId = null;
 let _scrollEl          = null;
 
 function _getScrollEl() {
@@ -372,13 +372,14 @@ function _dragHighlight(target) {
 }
 
 function _dragScrollTick() {
-    if (!_dragState || !_dragState.live) return;
-    var h = window.innerHeight;
-    var y = _dragState.y;
-    var speed = 0;
-    if (y < _DRAG_ZONE)      speed = -_DRAG_SPEED;
-    else if (y > h - _DRAG_ZONE) speed =  _DRAG_SPEED;
-    if (speed !== 0) _getScrollEl().scrollTop += speed;
+    if (!_dragState || !_dragState.live) { _dragRafId = null; return; }
+    var h  = window.innerHeight;
+    var y  = _dragState.y;
+    var sc = _getScrollEl();
+    sc.style.scrollBehavior = 'auto';
+    if (y < _DRAG_ZONE)           sc.scrollTop -= _DRAG_SPEED;
+    else if (y > h - _DRAG_ZONE)  sc.scrollTop += _DRAG_SPEED;
+    _dragRafId = requestAnimationFrame(_dragScrollTick);
 }
 
 function _onDragMove(e) {
@@ -400,7 +401,7 @@ function _onDragMove(e) {
         ghost.textContent = _dragState.data.label;
         document.body.appendChild(ghost);
         _dragState.ghost = ghost;
-        if (!_dragScrollInterval) _dragScrollInterval = setInterval(_dragScrollTick, 16);
+        if (!_dragRafId) _dragRafId = requestAnimationFrame(_dragScrollTick);
     }
 
     if (_dragState.ghost) {
@@ -432,7 +433,7 @@ function _onDragUp(e) {
 }
 
 function _endPointerDrag() {
-    if (_dragScrollInterval) { clearInterval(_dragScrollInterval); _dragScrollInterval = null; }
+    if (_dragRafId) { cancelAnimationFrame(_dragRafId); _dragRafId = null; }
     if (_dragState && _dragState.ghost) _dragState.ghost.remove();
     if (_dragCurrentTarget) { _dragCurrentTarget.style.outline = ''; _dragCurrentTarget = null; }
     document.body.style.userSelect = '';
