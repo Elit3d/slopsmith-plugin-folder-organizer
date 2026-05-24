@@ -283,12 +283,21 @@ function _buildSongDateInfo(song) {
 }
 
 // ── Song metadata badges (visible when filters are active) ────────────
-function _badge(text, active) {
+function _badge(text, active, type) {
     var b = document.createElement('span');
+    // inactive colour per badge category
+    var _typeColors = {
+        arrangement: { border: '#92400e', color: '#fcd34d' }, // amber
+        stem:        { border: '#5b21b6', color: '#c4b5fd' }, // violet
+        lyrics:      { border: '#9f1239', color: '#fda4af' }, // rose
+        tuning:      { border: '#0f766e', color: '#5eead4' }, // teal
+    };
+    var tc = (!active && type) ? (_typeColors[type] || null) : null;
     b.style.cssText = 'display:inline-block; padding:1px 6px; border-radius:3px; ' +
         'font-size:10px; font-weight:500; white-space:nowrap; cursor:pointer; ' +
-        'background:' + (active ? '#1d4ed8' : '#1e293b') + '; ' +
-        'color:'      + (active ? '#fff'    : '#94a3b8') + ';';
+        'border:1px solid ' + (active ? '#3b82f6' : (tc ? tc.border : '#334155')) + '; ' +
+        'background:' + (active ? '#1d4ed8' : 'transparent') + '; ' +
+        'color:'      + (active ? '#fff'    : (tc ? tc.color : '#cbd5e1')) + ';';
     b.textContent = text;
     return b;
 }
@@ -303,7 +312,7 @@ function _buildSongBadges(song) {
 
     (song.arrangements || []).forEach(function (a) {
         var active = ((_filters.arrangements || {})[a] === 'on');
-        var b = _badge(a, active);
+        var b = _badge(a, active, 'arrangement');
         b.addEventListener('click', function (e) {
             e.stopPropagation();
             if (!_filters.arrangements) _filters.arrangements = {};
@@ -315,7 +324,7 @@ function _buildSongBadges(song) {
 
     (song.stems || []).forEach(function (s) {
         var active = ((_filters.stems || {})[s] === 'on');
-        var b = _badge(s, active);
+        var b = _badge(s, active, 'stem');
         b.addEventListener('click', function (e) {
             e.stopPropagation();
             if (!_filters.stems) _filters.stems = {};
@@ -327,7 +336,7 @@ function _buildSongBadges(song) {
 
     if (song.lyrics) {
         var lyrActive = (_filters.lyrics === 'on');
-        var lb = _badge('♪ Lyrics', lyrActive);
+        var lb = _badge('♪ Lyrics', lyrActive, 'lyrics');
         lb.addEventListener('click', function (e) {
             e.stopPropagation();
             _filters.lyrics = lyrActive ? 'off' : 'on';
@@ -339,7 +348,7 @@ function _buildSongBadges(song) {
     if (song.tuning) {
         var t = song.tuning.trim();
         var tunActive = (_filters.tunings || []).indexOf(t) !== -1;
-        var tb = _badge(t, tunActive);
+        var tb = _badge(t, tunActive, 'tuning');
         tb.addEventListener('click', function (e) {
             e.stopPropagation();
             if (!_filters.tunings) _filters.tunings = [];
@@ -355,7 +364,7 @@ function _buildSongBadges(song) {
 }
 
 function _revealBadges(el) {
-    el.style.maxHeight  = '60px';
+    el.style.maxHeight  = '120px';
     el.style.opacity    = '1';
     el.style.marginTop  = '4px';
 }
