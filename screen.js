@@ -247,17 +247,21 @@ function _makeSplitPill(label, state, onChange) {
     return pill;
 }
 
-// ── Sort-active metadata label ────────────────────────────────────────
-function _sortMetaLabel(song) {
-    if (_sort === 'year' && song.year != null)
-        return String(song.year);
-    if (_sort === 'tuning' && song.tuning)
-        return song.tuning;
-    if (_sort === 'added' && song.added) {
+// ── Song date info (year + date added) — separate hover reveal ────────
+function _buildSongDateInfo(song) {
+    var parts = [];
+    if (song.year != null && song.year !== '') parts.push(String(song.year));
+    if (song.added) {
         var d = new Date(song.added * 1000);
-        return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+        parts.push(d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
     }
-    return null; // title, artist, duration, default — already shown
+    if (!parts.length) return null;
+    var el = document.createElement('div');
+    el.style.cssText = 'font-size:11px; font-weight:500; color:#cbd5e1; ' +
+        'max-height:0; opacity:0; overflow:hidden; margin-top:0; ' +
+        'transition:max-height 0.2s ease, opacity 0.15s, margin-top 0.15s;';
+    el.textContent = parts.join('  ·  ');
+    return el;
 }
 
 // ── Song metadata badges (visible when filters are active) ────────────
@@ -672,19 +676,17 @@ function _songCard(song, folderName) {
     sub.style.cssText = 'font-size:11px; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;';
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
 
-    var cardSortLbl = _sortMetaLabel(song);
-    if (cardSortLbl) {
-        var cardSortEl = document.createElement('div');
-        cardSortEl.style.cssText = 'font-size:11px; color:#60a5fa; margin-top:3px; font-weight:500;';
-        cardSortEl.textContent = cardSortLbl;
-        meta.appendChild(cardSortEl);
-    }
-
     var cardBadges = _buildSongBadges(song);
     if (cardBadges) {
         meta.appendChild(cardBadges);
         card.addEventListener('mouseenter', function () { _revealBadges(cardBadges); });
         card.addEventListener('mouseleave', function () { _hideBadges(cardBadges); });
+    }
+    var cardDateInfo = _buildSongDateInfo(song);
+    if (cardDateInfo) {
+        meta.appendChild(cardDateInfo);
+        card.addEventListener('mouseenter', function () { _revealBadges(cardDateInfo); });
+        card.addEventListener('mouseleave', function () { _hideBadges(cardDateInfo); });
     }
 
     // move button
@@ -768,6 +770,12 @@ function _songRow(song, folderName) {
         row.addEventListener('mouseenter', function () { _revealBadges(rowBadges); });
         row.addEventListener('mouseleave', function () { _hideBadges(rowBadges); });
     }
+    var rowDateInfo = _buildSongDateInfo(song);
+    if (rowDateInfo) {
+        meta.appendChild(rowDateInfo);
+        row.addEventListener('mouseenter', function () { _revealBadges(rowDateInfo); });
+        row.addEventListener('mouseleave', function () { _hideBadges(rowDateInfo); });
+    }
 
     // play icon (right side)
     const icon = document.createElement('span');
@@ -799,20 +807,10 @@ function _songRow(song, folderName) {
         _moveSong(song, folderName);
     });
 
-    var sortLbl = _sortMetaLabel(song);
-    var sortEl  = null;
-    if (sortLbl) {
-        sortEl = document.createElement('span');
-        sortEl.className = 'shrink-0 text-xs tabular-nums';
-        sortEl.style.color = '#60a5fa';
-        sortEl.textContent = sortLbl;
-    }
-
     row.appendChild(thumb);
     row.appendChild(meta);
     row.appendChild(icon);
     row.appendChild(dur);
-    if (sortEl) row.appendChild(sortEl);
     row.appendChild(moveBtn);
 
     row.addEventListener('click', function () {
