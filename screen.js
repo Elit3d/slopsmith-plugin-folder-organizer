@@ -325,20 +325,6 @@ function _songRow(song, folderName) {
     return row;
 }
 
-// ── Chunked renderer — yields to browser every 50 items so first batch is interactive immediately
-function _renderChunked(songs, container, folderName) {
-    var i = 0;
-    function next() {
-        var end = Math.min(i + 50, songs.length);
-        while (i < end) {
-            container.appendChild(_view === 'grid' ? _songCard(songs[i], folderName) : _songRow(songs[i], folderName));
-            i++;
-        }
-        if (i < songs.length) setTimeout(next, 0);
-    }
-    next();
-}
-
 // ── Pointer-based drag (mousedown/mousemove/mouseup) ─────────────────
 // HTML5 DnD blocks wheel events and gives unreliable edge positions in
 // Electron — pointer events give full control over both.
@@ -346,8 +332,10 @@ let _dragState         = null;
 let _dragCurrentTarget = null;
 
 const _DRAG_THRESH = 5;
-const _DRAG_ZONE   = 100;
-const _DRAG_SPEED  = 16;
+const _DRAG_ZONE   = 150;
+const _DRAG_SPEED  = 25;
+
+let _dragScrollInterval = null;
 
 function _dragFindTarget(x, y) {
     const els = document.elementsFromPoint(x, y);
@@ -367,21 +355,20 @@ function _dragHighlight(target) {
     }
 }
 
-function _dragRafTick() {
+function _dragScrollTick() {
     if (!_dragState || !_dragState.live) return;
     var h = window.innerHeight;
     var y = _dragState.y;
     var speed = 0;
     if (y < _DRAG_ZONE) {
-        speed = -_DRAG_SPEED * Math.pow(1 - y / _DRAG_ZONE, 2);
+        speed = -_DRAG_SPEED * (1 - y / _DRAG_ZONE);
     } else if (y > h - _DRAG_ZONE) {
-        speed = _DRAG_SPEED * Math.pow(1 - (h - y) / _DRAG_ZONE, 2);
+        speed = _DRAG_SPEED * (1 - (h - y) / _DRAG_ZONE);
     }
     if (speed !== 0) {
         document.documentElement.scrollTop += speed;
         document.body.scrollTop += speed;
     }
-    requestAnimationFrame(_dragRafTick);
 }
 
 function _onDragMove(e) {
@@ -403,7 +390,7 @@ function _onDragMove(e) {
         ghost.textContent = _dragState.data.label;
         document.body.appendChild(ghost);
         _dragState.ghost = ghost;
-        requestAnimationFrame(_dragRafTick);
+        if (!_dragScrollInterval) _dragScrollInterval = setInterval(_dragScrollTick, 16);
     }
 
     if (_dragState.ghost) {
@@ -435,6 +422,7 @@ function _onDragUp(e) {
 }
 
 function _endPointerDrag() {
+    if (_dragScrollInterval) { clearInterval(_dragScrollInterval); _dragScrollInterval = null; }
     if (_dragState && _dragState.ghost) _dragState.ghost.remove();
     if (_dragCurrentTarget) { _dragCurrentTarget.style.outline = ''; _dragCurrentTarget = null; }
     document.body.style.userSelect = '';
@@ -598,7 +586,9 @@ function _folderSection(folder) {
     }
     let _listPopulated = open;
     function _populateFolderList() {
-        _renderChunked(folder.songs, list, folder.name);
+        folder.songs.forEach(function (s) {
+            list.appendChild(_view === 'grid' ? _songCard(s, folder.name) : _songRow(s, folder.name));
+        });
     }
     if (open) { _populateFolderList(); } else { list.style.display = 'none'; }
     _makeDropTarget(list, folder.name);
@@ -667,7 +657,9 @@ function _unsortedSection(songs) {
     }
     let _unsortedPopulated = _unsortedOpen;
     function _populateUnsortedList() {
-        _renderChunked(songs, list, '');
+        songs.forEach(function (s) {
+            list.appendChild(_view === 'grid' ? _songCard(s, '') : _songRow(s, ''));
+        });
     }
     if (_unsortedOpen) { _populateUnsortedList(); } else { list.style.display = 'none'; }
     _makeDropTarget(list, '');
