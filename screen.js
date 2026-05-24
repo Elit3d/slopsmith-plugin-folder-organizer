@@ -356,6 +356,8 @@ function _makeDropTarget(hdr, targetFolder) {
         if (data.folder === targetFolder) return;
         try {
             await _api('/song/move', { filename: data.filename, folder: targetFolder });
+            if (targetFolder) _openFolders.add(targetFolder);
+            else _unsortedOpen = true;
             await _load();
         } catch (err) {
             _status('Move failed: ' + err.message, true);
@@ -487,7 +489,7 @@ function _folderSection(folder) {
 
 // ── Unsorted section ──────────────────────────────────────────────────
 function _unsortedSection(songs) {
-    if (!songs.length) return null;
+    if (!songs.length && _query) return null;
     const wrap = document.createElement('div');
     wrap.className = 'mb-1';
 
