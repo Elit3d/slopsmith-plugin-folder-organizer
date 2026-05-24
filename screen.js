@@ -230,6 +230,7 @@ function _songCard(song, folderName) {
         if (typeof window.playSong === 'function') window.playSong(song.filename);
     });
 
+    _makeDraggable(card, song, folderName);
     return card;
 }
 
@@ -317,7 +318,49 @@ function _songRow(song, folderName) {
         if (typeof window.playSong === 'function') window.playSong(song.filename);
     });
 
+    _makeDraggable(row, song, folderName);
     return row;
+}
+
+// ── Drag and drop ─────────────────────────────────────────────────────
+function _makeDraggable(el, song, folderName) {
+    el.draggable = true;
+    el.addEventListener('dragstart', function (e) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({ filename: song.filename, folder: folderName }));
+        setTimeout(function () { el.style.opacity = '0.4'; }, 0);
+    });
+    el.addEventListener('dragend', function () {
+        el.style.opacity = '';
+    });
+}
+
+function _makeDropTarget(hdr, targetFolder) {
+    hdr.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        hdr.style.outline = '2px solid #3b82f6';
+        hdr.style.borderRadius = '6px';
+    });
+    hdr.addEventListener('dragleave', function (e) {
+        if (!hdr.contains(e.relatedTarget)) {
+            hdr.style.outline = '';
+        }
+    });
+    hdr.addEventListener('drop', async function (e) {
+        e.preventDefault();
+        hdr.style.outline = '';
+        let data;
+        try { data = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (_) { return; }
+        if (!data || !data.filename) return;
+        if (data.folder === targetFolder) return;
+        try {
+            await _api('/song/move', { filename: data.filename, folder: targetFolder });
+            await _load();
+        } catch (err) {
+            _status('Move failed: ' + err.message, true);
+        }
+    });
 }
 
 // ── Move song dialog ──────────────────────────────────────────────────
@@ -413,6 +456,8 @@ function _folderSection(folder) {
     hdr.appendChild(renameBtn);
     hdr.appendChild(delBtn);
 
+    _makeDropTarget(hdr, folder.name);
+
     // song list/grid
     const list = document.createElement('div');
     if (_view === 'grid') {
@@ -476,6 +521,8 @@ function _unsortedSection(songs) {
     hdr.appendChild(ico);
     hdr.appendChild(lbl);
     hdr.appendChild(cnt);
+
+    _makeDropTarget(hdr, '');
 
     const list = document.createElement('div');
     if (_view === 'grid') {
