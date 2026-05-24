@@ -242,13 +242,28 @@ function _songRow(song, folderName) {
     ].join(' ');
     row.dataset.filename = song.filename;
 
-    // play icon
-    const icon = document.createElement('span');
-    icon.className = 'shrink-0 w-4 h-4 text-dark-400 group-hover:text-blue-400 transition-colors';
-    icon.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-full h-full">
-        <path fill-rule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-              clip-rule="evenodd"/></svg>`;
+    // small album art thumbnail
+    const thumb = document.createElement('div');
+    thumb.style.cssText = 'shrink:0; width:36px; height:36px; border-radius:4px; overflow:hidden; background:#111827; flex-shrink:0; position:relative;';
+    const thumbImg = document.createElement('img');
+    thumbImg.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
+    thumbImg.alt = '';
+    thumbImg.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+    const thumbPlaceholder = document.createElement('div');
+    thumbPlaceholder.style.cssText = 'position:absolute; inset:0; display:flex; align-items:center; justify-content:center;';
+    thumbPlaceholder.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="#374151" stroke-width="1.5" style="width:14px;height:14px">
+        <path d="M9 19H5a2 2 0 01-2-2V7a2 2 0 012-2h2l2 2h6a2 2 0 012 2v2"/>
+        <circle cx="13" cy="16" r="2"/><path d="M15 16v-4l3-1v4"/><circle cx="18" cy="15" r="2"/>
+    </svg>`;
+    thumbImg.addEventListener('error', function () {
+        thumbImg.style.display = 'none';
+        thumbPlaceholder.style.display = 'flex';
+    });
+    thumbImg.addEventListener('load', function () {
+        thumbPlaceholder.style.display = 'none';
+    });
+    thumb.appendChild(thumbPlaceholder);
+    thumb.appendChild(thumbImg);
 
     // meta
     const meta = document.createElement('div');
@@ -261,6 +276,14 @@ function _songRow(song, folderName) {
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
     meta.appendChild(title);
     meta.appendChild(sub);
+
+    // play icon (right side)
+    const icon = document.createElement('span');
+    icon.className = 'shrink-0 w-4 h-4 text-dark-400 group-hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100';
+    icon.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-full h-full">
+        <path fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+              clip-rule="evenodd"/></svg>`;
 
     // duration
     const dur = document.createElement('span');
@@ -284,8 +307,9 @@ function _songRow(song, folderName) {
         _moveSong(song, folderName);
     });
 
-    row.appendChild(icon);
+    row.appendChild(thumb);
     row.appendChild(meta);
+    row.appendChild(icon);
     row.appendChild(dur);
     row.appendChild(moveBtn);
 
