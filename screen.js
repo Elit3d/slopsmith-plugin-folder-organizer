@@ -32,6 +32,12 @@ let _loaded      = false;
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
 
+// ── Force screen to have height (Slopsmith .screen has no height set) ─
+function _fixHeight() {
+    const el = document.getElementById('plugin-' + PLUGIN_ID);
+    if (el) el.style.minHeight = window.innerHeight + 'px';
+}
+
 // ── Close the nav plugin dropdown (it sits at z-50 and blocks clicks) ─
 function _closeDropdown() {
     var dd = _el('plugin-dropdown');
@@ -466,6 +472,8 @@ function _render() {
 // ── Init ──────────────────────────────────────────────────────────────
 function _init() {
     _closeDropdown();
+    _fixHeight();
+    window.addEventListener('resize', _fixHeight);
 
     const search      = _el('fb-search');
     const reload      = _el('fb-reload');

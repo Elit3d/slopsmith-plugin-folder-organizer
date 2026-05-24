@@ -1,7 +1,7 @@
 {
   "id": "folder_organizer",
   "name": "Folder Organizer",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "private": true,
   "nav": { "label": "Folders", "screen": "plugin-folder_organizer" },
   "screen": "screen.html",
