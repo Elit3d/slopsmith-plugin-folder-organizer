@@ -1,100 +1,95 @@
-<!-- Folder Browser — screen.html -->
-<div id="plugin-folder_organizer"
-     class="screen bg-dark-600 text-gray-300"
-     style="padding-top: 64px; background-color: #0f1117;">
+<!-- Folder Browser — screen.html
+     Slopsmith injects this into a div#plugin-folder_organizer.screen automatically.
+     Do NOT add an outer wrapper div with class="screen". -->
 
-  <!-- ── toolbar ──────────────────────────────────────────────────────── -->
-  <div class="flex items-center gap-2 px-4 py-3 border-b border-dark-400 flex-wrap bg-dark-600"
-       style="position:sticky; top:0; z-index:200;">
+<!-- ── toolbar ──────────────────────────────────────────────────────── -->
+<div class="flex items-center gap-2 px-4 py-3 border-b border-dark-400 flex-wrap"
+     style="position:sticky; top:64px; z-index:200; background-color:#0f1117;">
 
-    <h2 class="text-base font-semibold text-white mr-1">Folders</h2>
+  <h2 class="text-base font-semibold text-white mr-1">Folders</h2>
 
-    <!-- search -->
-    <div class="relative flex-1 min-w-40 max-w-xs" style="z-index:200;">
-      <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none"
-           viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd"
-              d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-              clip-rule="evenodd"/>
-      </svg>
-      <input id="fb-search" type="text" placeholder="Search songs…"
-             style="position:relative; z-index:200;"
-             class="w-full pl-8 pr-3 py-1.5 rounded bg-dark-500 border border-dark-400
-                    text-sm text-gray-200 placeholder-gray-500
-                    focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"/>
-    </div>
-
-    <!-- new folder -->
-    <button id="fb-new-folder" title="New folder"
-            class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
-      <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
-        <path fill-rule="evenodd" d="M10 9a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1H8a1 1 0 110-2h1v-1a1 1 0 011-1z" clip-rule="evenodd"/>
-      </svg>
-    </button>
-
-    <!-- expand all -->
-    <button id="fb-expand-all" title="Expand all"
-            class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
-           stroke-linecap="round" class="w-4 h-4">
-        <path d="M5 8l5 5 5-5"/>
-        <path d="M5 4l5 5 5-5" opacity=".4"/>
-      </svg>
-    </button>
-
-    <!-- collapse all -->
-    <button id="fb-collapse-all" title="Collapse all"
-            class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
-           stroke-linecap="round" class="w-4 h-4">
-        <path d="M5 12l5-5 5 5"/>
-        <path d="M5 16l5-5 5 5" opacity=".4"/>
-      </svg>
-    </button>
-
-    <!-- reload -->
-    <button id="fb-reload" title="Reload"
-            class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
-      <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-        <path fill-rule="evenodd"
-              d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-              clip-rule="evenodd"/>
-      </svg>
-    </button>
-
-    <span id="fb-status" class="text-xs text-gray-500 ml-1"></span>
+  <!-- search -->
+  <div class="relative flex-1 min-w-40 max-w-xs">
+    <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none"
+         viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd"
+            d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+            clip-rule="evenodd"/>
+    </svg>
+    <input id="fb-search" type="text" placeholder="Search songs…"
+           class="w-full pl-8 pr-3 py-1.5 rounded bg-dark-500 border border-dark-400
+                  text-sm text-gray-200 placeholder-gray-500
+                  focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"/>
   </div>
 
-  <!-- ── tree ─────────────────────────────────────────────────────────── -->
-  <div id="fb-tree" class="px-2 py-2"
-       style="position:relative; z-index:1;"></div>
+  <!-- new folder -->
+  <button id="fb-new-folder" title="New folder"
+          class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
+    <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+      <path fill-rule="evenodd" d="M10 9a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1H8a1 1 0 110-2h1v-1a1 1 0 011-1z" clip-rule="evenodd"/>
+    </svg>
+  </button>
 
-  <!-- ── custom modal (replaces prompt/confirm blocked by Electron) ───── -->
-  <div id="fb-modal" style="display:none; position:fixed; inset:0; z-index:9999;
-       background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
-    <div style="background:#1e2130; border:1px solid #374151; border-radius:8px;
-                padding:24px; width:360px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-      <p id="fb-modal-msg" style="color:#e5e7eb; font-size:14px; margin:0 0 16px 0;
-         white-space:pre-wrap; line-height:1.5;"></p>
-      <input id="fb-modal-input" type="text"
-             style="display:none; width:100%; box-sizing:border-box; padding:8px 12px;
-                    background:#111827; border:1px solid #374151; border-radius:6px;
-                    color:#e5e7eb; font-size:14px; outline:none; margin-bottom:16px;"
-             placeholder=""/>
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button id="fb-modal-cancel"
-                style="padding:6px 16px; border-radius:6px; border:1px solid #374151;
-                       background:transparent; color:#9ca3af; font-size:13px; cursor:pointer;">
-          Cancel
-        </button>
-        <button id="fb-modal-ok"
-                style="padding:6px 16px; border-radius:6px; border:none;
-                       background:#3b82f6; color:#fff; font-size:13px; cursor:pointer; font-weight:500;">
-          OK
-        </button>
-      </div>
+  <!-- expand all -->
+  <button id="fb-expand-all" title="Expand all"
+          class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" class="w-4 h-4">
+      <path d="M5 8l5 5 5-5"/>
+      <path d="M5 4l5 5 5-5" opacity=".4"/>
+    </svg>
+  </button>
+
+  <!-- collapse all -->
+  <button id="fb-collapse-all" title="Collapse all"
+          class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" class="w-4 h-4">
+      <path d="M5 12l5-5 5 5"/>
+      <path d="M5 16l5-5 5 5" opacity=".4"/>
+    </svg>
+  </button>
+
+  <!-- reload -->
+  <button id="fb-reload" title="Reload"
+          class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
+    <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+      <path fill-rule="evenodd"
+            d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+            clip-rule="evenodd"/>
+    </svg>
+  </button>
+
+  <span id="fb-status" class="text-xs text-gray-500 ml-1"></span>
+</div>
+
+<!-- ── tree ─────────────────────────────────────────────────────────── -->
+<div id="fb-tree" class="px-2 py-2"></div>
+
+<!-- ── custom modal ──────────────────────────────────────────────────── -->
+<div id="fb-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+  <div style="background:#1e2130; border:1px solid #374151; border-radius:8px;
+              padding:24px; width:360px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <p id="fb-modal-msg" style="color:#e5e7eb; font-size:14px; margin:0 0 16px 0;
+       white-space:pre-wrap; line-height:1.5;"></p>
+    <input id="fb-modal-input" type="text"
+           style="display:none; width:100%; box-sizing:border-box; padding:8px 12px;
+                  background:#111827; border:1px solid #374151; border-radius:6px;
+                  color:#e5e7eb; font-size:14px; outline:none; margin-bottom:16px;"
+           placeholder=""/>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button id="fb-modal-cancel"
+              style="padding:6px 16px; border-radius:6px; border:1px solid #374151;
+                     background:transparent; color:#9ca3af; font-size:13px; cursor:pointer;">
+        Cancel
+      </button>
+      <button id="fb-modal-ok"
+              style="padding:6px 16px; border-radius:6px; border:none;
+                     background:#3b82f6; color:#fff; font-size:13px; cursor:pointer; font-weight:500;">
+        OK
+      </button>
     </div>
   </div>
-
 </div>
