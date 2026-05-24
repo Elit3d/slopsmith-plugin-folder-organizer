@@ -36,6 +36,24 @@ let _sortDir     = _store('sortDir') || 'asc';  // 'asc' | 'desc'
 const _ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
 const _STEMS        = ['Drums', 'Bass', 'Vocals', 'Guitar', 'Piano', 'Other'];
 
+// Returns which filter sections have actual data in the current library.
+// The filter panel uses this to show/hide sections automatically — no manual
+// toggling needed. Add songs with stems and the stems section reappears on reload.
+function _getAvailableFilters() {
+    var out = { arrangements: false, stems: false, lyrics: false, tuning: false };
+    if (!_tree) return out;
+    var all = _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    );
+    all.forEach(function (s) {
+        if ((s.arrangements || []).length) out.arrangements = true;
+        if ((s.stems        || []).length) out.stems        = true;
+        if (s.lyrics)                      out.lyrics       = true;
+        if (s.tuning)                      out.tuning       = true;
+    });
+    return out;
+}
+
 var _filtersRaw = _storeJSON('filters') || {};
 function _normFilterGroup(g) {
     var out = {};
@@ -498,10 +516,11 @@ function _buildFilterPanel() {
     // scrollable content
     var content = document.createElement('div');
     content.style.cssText = 'overflow-y:auto; flex:1; padding:16px 20px;';
-    content.appendChild(_makePillSection('ARRANGEMENTS', _ARRANGEMENTS, 'arrangements'));
-    content.appendChild(_makePillSection('STEMS (sloppak)', _STEMS, 'stems'));
-    content.appendChild(_makeLyricsSection());
-    content.appendChild(_makeTuningSection());
+    var avail = _getAvailableFilters();
+    if (avail.arrangements) content.appendChild(_makePillSection('ARRANGEMENTS', _ARRANGEMENTS, 'arrangements'));
+    if (avail.stems)        content.appendChild(_makePillSection('STEMS (sloppak)', _STEMS, 'stems'));
+    if (avail.lyrics)       content.appendChild(_makeLyricsSection());
+    if (avail.tuning)       content.appendChild(_makeTuningSection());
     panel.appendChild(content);
 
     // footer
