@@ -48,7 +48,7 @@ Slopsmith automatically creates `<div id="plugin-folder_organizer" class="screen
 The navbar sits at `top:0, z-index:50`. Plugin toolbars must use `position:fixed; top:64px; z-index:40` to sit below the navbar. Use a solid `background-color` (not Tailwind bg classes — those may not apply correctly) to prevent content showing through.
 
 ### 4. Content must have padding-top to clear the fixed toolbar
-Since the toolbar is `position:fixed`, it floats above the content. The content container needs `padding-top: 80px` to ensure the first item isn't hidden behind the toolbar.
+Since the toolbar is `position:fixed`, it floats above the content. The content container needs `padding-top: 120px` to ensure the first item isn't hidden behind the toolbar. This accounts for the Slopsmith navbar (64px) plus the plugin toolbar height (~56px). Adding more toolbar buttons increases this height, so if content is clipped, increase the padding further.
 
 ### 5. Electron blocks window.prompt() and window.confirm()
 The Slopsmith desktop app is built on Electron which throws `Error: prompt() is not supported`. Use a custom inline modal instead. See `_showModal()` in `screen.js` for the implementation — it returns a Promise and supports both text input and confirm modes.
