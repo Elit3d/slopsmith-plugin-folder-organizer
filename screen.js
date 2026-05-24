@@ -37,12 +37,21 @@ const _ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
 const _STEMS        = ['Drums', 'Bass', 'Vocals', 'Guitar', 'Piano', 'Other'];
 
 var _filtersRaw = _storeJSON('filters') || {};
+function _normFilterGroup(g) {
+    var out = {};
+    for (var k in (g || {})) {
+        var v = g[k];
+        // normalise legacy values: 'require' → 'on', 'any' → 'off'
+        out[k] = v === 'require' ? 'on' : v === 'any' ? 'off' : v;
+    }
+    return out;
+}
 let _filters = {
-    arrangements: _filtersRaw.arrangements || {},
-    stems:        _filtersRaw.stems        || {},
-    // normalise legacy 'any'/'require'/'exclude' values from older saves
-    lyrics:  (_filtersRaw.lyrics === 'require' || _filtersRaw.lyrics === 'on') ? 'on' : 'off',
-    tunings: _filtersRaw.tunings || [],
+    arrangements: _normFilterGroup(_filtersRaw.arrangements),
+    stems:        _normFilterGroup(_filtersRaw.stems),
+    lyrics:       (_filtersRaw.lyrics === 'require' || _filtersRaw.lyrics === 'on') ? 'on'
+                : (_filtersRaw.lyrics === 'exclude') ? 'exclude' : 'off',
+    tunings:      _filtersRaw.tunings || [],
 };
 
 // ── DOM helpers ───────────────────────────────────────────────────────
@@ -135,30 +144,29 @@ function _saveFilters() {
 function _activeFilterCount() {
     var n = 0;
     var arrVals = _filters.arrangements || {};
-    for (var a in arrVals) { if (arrVals[a] === 'on') n++; }
+    for (var a in arrVals) { if (arrVals[a] === 'on' || arrVals[a] === 'exclude') n++; }
     var stemVals = _filters.stems || {};
-    for (var s in stemVals) { if (stemVals[s] === 'on') n++; }
-    if (_filters.lyrics === 'on') n++;
+    for (var s in stemVals) { if (stemVals[s] === 'on' || stemVals[s] === 'exclude') n++; }
+    if (_filters.lyrics === 'on' || _filters.lyrics === 'exclude') n++;
     n += (_filters.tunings || []).length;
     return n;
 }
 
 function _matchFilters(song) {
-    // Arrangements — each active pill means song MUST have that arrangement
-    var arrF = _filters.arrangements || {};
+    var arrF    = _filters.arrangements || {};
     var songArr = song.arrangements || [];
     for (var a in arrF) {
-        if (arrF[a] === 'on' && songArr.indexOf(a) === -1) return false;
+        if (arrF[a] === 'on'      && songArr.indexOf(a) === -1) return false;
+        if (arrF[a] === 'exclude' && songArr.indexOf(a) !== -1) return false;
     }
-    // Stems — each active pill means song MUST have that stem
-    var stemsF = _filters.stems || {};
+    var stemsF    = _filters.stems || {};
     var songStems = song.stems || [];
     for (var s in stemsF) {
-        if (stemsF[s] === 'on' && songStems.indexOf(s) === -1) return false;
+        if (stemsF[s] === 'on'      && songStems.indexOf(s) === -1) return false;
+        if (stemsF[s] === 'exclude' && songStems.indexOf(s) !== -1) return false;
     }
-    // Lyrics
-    if (_filters.lyrics === 'on' && !song.lyrics) return false;
-    // Tunings — song must match one of the selected tunings
+    if (_filters.lyrics === 'on'      && !song.lyrics) return false;
+    if (_filters.lyrics === 'exclude' &&  song.lyrics) return false;
     var tunings = _filters.tunings || [];
     if (tunings.length) {
         var t = (song.tuning || '').trim();
@@ -182,17 +190,61 @@ function _getTunings() {
         .map(function (t) { return { tuning: t, count: counts[t] }; });
 }
 
-// Pill is a simple on/off toggle — no three-way cycle
-function _applyPillStyle(el, on) {
-    if (on) {
-        el.style.background  = '#1d4ed8';
-        el.style.borderColor = '#2563eb';
-        el.style.color       = '#fff';
-    } else {
-        el.style.background  = 'transparent';
-        el.style.borderColor = '#374151';
-        el.style.color       = '#6b7280';
+// Split pill: left zone = include, right zone = exclude
+// state: 'off' | 'on' | 'exclude'
+function _makeSplitPill(label, state, onChange) {
+    var pill = document.createElement('div');
+    pill.style.cssText = 'display:inline-flex; border-radius:20px; border:1px solid; overflow:hidden;';
+
+    var incBtn = document.createElement('button');
+    incBtn.style.cssText = 'padding:4px 10px; background:none; border:none; border-right:1px solid; font-size:12px; cursor:pointer; white-space:nowrap;';
+    incBtn.textContent = label;
+
+    var excBtn = document.createElement('button');
+    excBtn.style.cssText = 'padding:4px 8px; background:none; border:none; font-size:11px; cursor:pointer; line-height:1;';
+    excBtn.title = 'Exclude';
+    excBtn.textContent = '✕';
+
+    function _apply() {
+        if (state === 'on') {
+            pill.style.borderColor   = '#2563eb';
+            incBtn.style.background  = '#1d4ed8';
+            incBtn.style.color       = '#fff';
+            incBtn.style.borderRightColor = '#3b82f6';
+            excBtn.style.background  = '#1d4ed8';
+            excBtn.style.color       = 'rgba(255,255,255,0.45)';
+        } else if (state === 'exclude') {
+            pill.style.borderColor   = '#991b1b';
+            incBtn.style.background  = 'transparent';
+            incBtn.style.color       = '#fca5a5';
+            incBtn.style.borderRightColor = '#7f1d1d';
+            excBtn.style.background  = 'transparent';
+            excBtn.style.color       = '#ef4444';
+        } else {
+            pill.style.borderColor   = '#374151';
+            incBtn.style.background  = 'transparent';
+            incBtn.style.color       = '#6b7280';
+            incBtn.style.borderRightColor = '#374151';
+            excBtn.style.background  = 'transparent';
+            excBtn.style.color       = '#4b5563';
+        }
     }
+    _apply();
+
+    incBtn.addEventListener('click', function () {
+        state = (state === 'on') ? 'off' : 'on';
+        _apply();
+        onChange(state);
+    });
+    excBtn.addEventListener('click', function () {
+        state = (state === 'exclude') ? 'off' : 'exclude';
+        _apply();
+        onChange(state);
+    });
+
+    pill.appendChild(incBtn);
+    pill.appendChild(excBtn);
+    return pill;
 }
 
 function _updateFilterBadge() {
@@ -217,21 +269,14 @@ function _makePillSection(sectionTitle, items, filterKey) {
     pills.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px;';
 
     items.forEach(function (item) {
-        var on = ((_filters[filterKey] || {})[item] === 'on');
-        var pill = document.createElement('button');
-        pill.style.cssText = 'padding:4px 12px; border-radius:20px; border:1px solid; font-size:12px; cursor:pointer;';
-        _applyPillStyle(pill, on);
-        pill.textContent = item;
-        pill.addEventListener('click', function () {
+        var state = ((_filters[filterKey] || {})[item]) || 'off';
+        pills.appendChild(_makeSplitPill(item, state, function (next) {
             if (!_filters[filterKey]) _filters[filterKey] = {};
-            on = !on;
-            _filters[filterKey][item] = on ? 'on' : 'off';
+            _filters[filterKey][item] = next;
             _saveFilters();
-            _applyPillStyle(pill, on);
             _updateFilterBadge();
             _render();
-        });
-        pills.appendChild(pill);
+        }));
     });
 
     section.appendChild(pills);
@@ -247,20 +292,13 @@ function _makeLyricsSection() {
     hdr.textContent = 'LYRICS';
     section.appendChild(hdr);
 
-    var on = (_filters.lyrics === 'on');
-    var pill = document.createElement('button');
-    pill.style.cssText = 'padding:4px 12px; border-radius:20px; border:1px solid; font-size:12px; cursor:pointer;';
-    _applyPillStyle(pill, on);
-    pill.textContent = 'Lyrics';
-    pill.addEventListener('click', function () {
-        on = !on;
-        _filters.lyrics = on ? 'on' : 'off';
+    var state = _filters.lyrics || 'off';
+    section.appendChild(_makeSplitPill('Lyrics', state, function (next) {
+        _filters.lyrics = next;
         _saveFilters();
-        _applyPillStyle(pill, on);
         _updateFilterBadge();
         _render();
-    });
-    section.appendChild(pill);
+    }));
     return section;
 }
 
@@ -374,6 +412,7 @@ function _buildFilterPanel() {
     clearBtn.textContent = 'Clear all';
     clearBtn.addEventListener('click', function () {
         _filters = { arrangements: {}, stems: {}, lyrics: 'off', tunings: [] };
+
         _saveFilters();
         _updateFilterBadge();
         _render();

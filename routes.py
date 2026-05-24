@@ -74,12 +74,19 @@ def setup(app, context):
                         if (isinstance(a, dict) and "name" in a) or isinstance(a, str)
                     ]
 
-                # stems — try common key variants
-                for _key in ("stems", "stem_types", "available_stems", "stem_names", "stemTypes"):
-                    _val = raw.get(_key)
-                    if _val:
-                        m["stems"] = list(_val) if isinstance(_val, (list, tuple)) else [str(_val)]
+                # stems — may also be objects with a "name" key, same as arrangements
+                raw_stems = raw.get("stems") or []
+                for _key in ("stems", "stem_types", "available_stems", "stemTypes"):
+                    _v = raw.get(_key)
+                    if _v:
+                        raw_stems = _v
                         break
+                if isinstance(raw_stems, (list, tuple)):
+                    m["stems"] = [
+                        a["name"] if isinstance(a, dict) else str(a)
+                        for a in raw_stems
+                        if (isinstance(a, dict) and "name" in a) or isinstance(a, str)
+                    ]
 
                 # lyrics — try common key variants
                 for _key in ("lyrics", "hasLyrics", "has_lyrics", "lyric", "hasLyric"):
