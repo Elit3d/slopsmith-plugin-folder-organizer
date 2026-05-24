@@ -1,22 +1,17 @@
 """
 Folder Browser plugin — routes.py
-Scans the sloppak DLC directory and returns a folder-grouped song tree.
-Groups songs by the immediate subfolder they sit in, so the user can
-organise songs simply by creating folders. Also provides folder
-create/rename/delete and song move endpoints.
 """
 
 from pathlib import Path
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import shutil
 import re
 
+
 def setup(app, context):
     log = context["log"]
-    router = APIRouter(prefix="/api/plugin/folder_browser")
-
-    # ── helpers ──────────────────────────────────────────────────────────
+    router = APIRouter(prefix="/api/plugin/folder_organizer")
 
     def _dlc_root() -> Path | None:
         try:
@@ -37,7 +32,6 @@ def setup(app, context):
         return False
 
     def _safe_name(name: str) -> bool:
-        """Reject names with path traversal or illegal chars."""
         if not name or name.strip() != name:
             return False
         if re.search(r'[\\/:*?"<>|]', name):
@@ -52,7 +46,6 @@ def setup(app, context):
             filename = "/".join(rel.parts)
         except ValueError:
             filename = p.name
-
         m = {"filename": filename, "title": None, "artist": None,
              "album": None, "duration": None}
         try:
@@ -68,21 +61,16 @@ def setup(app, context):
             m["title"] = p.stem
         return m
 
-    # ── GET /tree ─────────────────────────────────────────────────────────
-
     @router.get("/tree")
     def get_tree():
         dlc = _dlc_root()
         if not dlc or not dlc.exists():
             return JSONResponse({"folders": [], "root_songs": [],
                                  "error": "DLC directory not found"})
-
         root = _scan_root(dlc)
         log.info("folder_browser: scanning %s", root)
-
         folders: dict[str, list] = {}
         root_songs: list = []
-
         try:
             for entry in sorted(root.iterdir(), key=lambda p: p.name.lower()):
                 if entry.name.startswith("."):
@@ -98,21 +86,18 @@ def setup(app, context):
                                 kids.append(_meta(child, dlc))
                     except PermissionError:
                         log.warning("permission denied: %s", entry)
-                    folders[entry.name] = kids  # include empty folders too
+                    folders[entry.name] = kids
         except PermissionError:
             return JSONResponse({"folders": [], "root_songs": [],
                                  "error": "Permission denied"})
-
         folder_list = [
             {"name": n, "songs": s}
             for n, s in sorted(folders.items(), key=lambda kv: kv[0].lower())
         ]
         return JSONResponse({"folders": folder_list, "root_songs": root_songs})
 
-    # ── POST /folder/create ───────────────────────────────────────────────
-
     @router.post("/folder/create")
-    async def create_folder(request):
+    async def create_folder(request: Request):
         body = await request.json()
         name = (body.get("name") or "").strip()
         if not _safe_name(name):
@@ -120,21 +105,17 @@ def setup(app, context):
         dlc = _dlc_root()
         if not dlc:
             return JSONResponse({"error": "DLC dir not found"}, status_code=500)
-        root = _scan_root(dlc)
-        target = root / name
+        target = _scan_root(dlc) / name
         if target.exists():
             return JSONResponse({"error": "Folder already exists"}, status_code=400)
         try:
             target.mkdir(parents=False)
-            log.info("folder_browser: created folder %s", target)
             return JSONResponse({"ok": True})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
-    # ── POST /folder/rename ───────────────────────────────────────────────
-
     @router.post("/folder/rename")
-    async def rename_folder(request):
+    async def rename_folder(request: Request):
         body = await request.json()
         old = (body.get("old") or "").strip()
         new = (body.get("new") or "").strip()
@@ -144,23 +125,19 @@ def setup(app, context):
         if not dlc:
             return JSONResponse({"error": "DLC dir not found"}, status_code=500)
         root = _scan_root(dlc)
-        src = root / old
-        dst = root / new
+        src, dst = root / old, root / new
         if not src.exists():
             return JSONResponse({"error": "Folder not found"}, status_code=404)
         if dst.exists():
             return JSONResponse({"error": "Name already taken"}, status_code=400)
         try:
             src.rename(dst)
-            log.info("folder_browser: renamed %s → %s", src, dst)
             return JSONResponse({"ok": True})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
-    # ── POST /folder/delete ───────────────────────────────────────────────
-
     @router.post("/folder/delete")
-    async def delete_folder(request):
+    async def delete_folder(request: Request):
         body = await request.json()
         name = (body.get("name") or "").strip()
         if not _safe_name(name):
@@ -173,35 +150,27 @@ def setup(app, context):
         if not target.exists():
             return JSONResponse({"error": "Folder not found"}, status_code=404)
         try:
-            # Move songs back to root before deleting
             for child in target.iterdir():
                 if _is_song(child):
                     dest = root / child.name
                     if not dest.exists():
                         child.rename(dest)
             shutil.rmtree(target)
-            log.info("folder_browser: deleted folder %s", target)
             return JSONResponse({"ok": True})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
-    # ── POST /song/move ───────────────────────────────────────────────────
-
     @router.post("/song/move")
-    async def move_song(request):
-        """Move a song file to a different folder (or root if folder is null)."""
+    async def move_song(request: Request):
         body = await request.json()
         filename = (body.get("filename") or "").strip()
-        dest_folder = (body.get("folder") or "").strip()  # empty = move to root
-
+        dest_folder = (body.get("folder") or "").strip()
         dlc = _dlc_root()
         if not dlc:
             return JSONResponse({"error": "DLC dir not found"}, status_code=500)
-
-        src = dlc / Path(filename.replace("/", "\\"))
+        src = dlc / Path(*filename.split("/"))
         if not src.exists():
             return JSONResponse({"error": "Song not found"}, status_code=404)
-
         root = _scan_root(dlc)
         if dest_folder:
             if not _safe_name(dest_folder):
@@ -211,13 +180,11 @@ def setup(app, context):
                 return JSONResponse({"error": "Destination folder not found"}, status_code=404)
         else:
             dst_dir = root
-
         dst = dst_dir / src.name
         if dst.exists():
             return JSONResponse({"error": "File already exists at destination"}, status_code=400)
         try:
             src.rename(dst)
-            log.info("folder_browser: moved %s → %s", src, dst)
             return JSONResponse({"ok": True})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)

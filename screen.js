@@ -6,7 +6,7 @@
 
 const PLUGIN_ID  = 'folder_organizer';
 const SCREEN_ID  = 'plugin-' + PLUGIN_ID;
-const API        = '/api/plugin/folder_browser';
+const API        = '/api/plugin/folder_organizer';
 
 // ── Safe localStorage helpers ─────────────────────────────────────────
 function _store(key, val) {
