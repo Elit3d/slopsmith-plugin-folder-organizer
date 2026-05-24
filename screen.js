@@ -336,6 +336,22 @@ const _DRAG_ZONE   = 150;
 const _DRAG_SPEED  = 25;
 
 let _dragScrollInterval = null;
+let _scrollEl          = null;
+
+function _getScrollEl() {
+    if (_scrollEl) return _scrollEl;
+    var el = document.getElementById('fb-tree');
+    while (el && el !== document.documentElement) {
+        var ov = window.getComputedStyle(el).overflowY;
+        if ((ov === 'auto' || ov === 'scroll' || ov === 'overlay') && el.scrollHeight > el.clientHeight) {
+            _scrollEl = el;
+            return _scrollEl;
+        }
+        el = el.parentElement;
+    }
+    _scrollEl = document.scrollingElement || document.documentElement;
+    return _scrollEl;
+}
 
 function _dragFindTarget(x, y) {
     const els = document.elementsFromPoint(x, y);
@@ -360,15 +376,9 @@ function _dragScrollTick() {
     var h = window.innerHeight;
     var y = _dragState.y;
     var speed = 0;
-    if (y < _DRAG_ZONE) {
-        speed = -_DRAG_SPEED * (1 - y / _DRAG_ZONE);
-    } else if (y > h - _DRAG_ZONE) {
-        speed = _DRAG_SPEED * (1 - (h - y) / _DRAG_ZONE);
-    }
-    if (speed !== 0) {
-        document.documentElement.scrollTop += speed;
-        document.body.scrollTop += speed;
-    }
+    if (y < _DRAG_ZONE)      speed = -_DRAG_SPEED;
+    else if (y > h - _DRAG_ZONE) speed =  _DRAG_SPEED;
+    if (speed !== 0) _getScrollEl().scrollTop += speed;
 }
 
 function _onDragMove(e) {
