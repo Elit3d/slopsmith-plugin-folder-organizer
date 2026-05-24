@@ -247,6 +247,42 @@ function _makeSplitPill(label, state, onChange) {
     return pill;
 }
 
+// ── Song metadata badges (visible when filters are active) ────────────
+function _badge(text) {
+    var b = document.createElement('span');
+    b.style.cssText = 'display:inline-block; padding:1px 6px; border-radius:3px; ' +
+        'font-size:10px; font-weight:500; background:#1e293b; color:#94a3b8; white-space:nowrap;';
+    b.textContent = text;
+    return b;
+}
+
+function _buildSongBadges(song) {
+    var wrap = document.createElement('div');
+    // hidden by default — revealed on hover by the caller
+    wrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:3px; ' +
+        'max-height:0; opacity:0; overflow:hidden; margin-top:0; ' +
+        'transition:max-height 0.2s ease, opacity 0.15s, margin-top 0.15s;';
+    var any = false;
+
+    (song.arrangements || []).forEach(function (a) { wrap.appendChild(_badge(a)); any = true; });
+    (song.stems || []).forEach(function (s) { wrap.appendChild(_badge(s)); any = true; });
+    if (song.lyrics) { wrap.appendChild(_badge('♪ Lyrics')); any = true; }
+    if (song.tuning) { wrap.appendChild(_badge(song.tuning)); any = true; }
+
+    return any ? wrap : null;
+}
+
+function _revealBadges(el) {
+    el.style.maxHeight  = '60px';
+    el.style.opacity    = '1';
+    el.style.marginTop  = '4px';
+}
+function _hideBadges(el) {
+    el.style.maxHeight  = '0';
+    el.style.opacity    = '0';
+    el.style.marginTop  = '0';
+}
+
 function _updateFilterBadge() {
     var badge = _el('fb-filter-badge');
     if (!badge) return;
@@ -575,6 +611,12 @@ function _songCard(song, folderName) {
     const sub = document.createElement('div');
     sub.style.cssText = 'font-size:11px; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;';
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
+    var cardBadges = _buildSongBadges(song);
+    if (cardBadges) {
+        meta.appendChild(cardBadges);
+        card.addEventListener('mouseenter', function () { _revealBadges(cardBadges); });
+        card.addEventListener('mouseleave', function () { _hideBadges(cardBadges); });
+    }
 
     // move button
     const moveBtn = document.createElement('button');
@@ -651,6 +693,12 @@ function _songRow(song, folderName) {
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
     meta.appendChild(title);
     meta.appendChild(sub);
+    var rowBadges = _buildSongBadges(song);
+    if (rowBadges) {
+        meta.appendChild(rowBadges);
+        row.addEventListener('mouseenter', function () { _revealBadges(rowBadges); });
+        row.addEventListener('mouseleave', function () { _hideBadges(rowBadges); });
+    }
 
     // play icon (right side)
     const icon = document.createElement('span');
