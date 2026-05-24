@@ -33,6 +33,7 @@ let _view        = _store('view') || 'list'; // 'list' | 'grid'
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
 
+
 // ── Force screen to have height (Slopsmith .screen has no height set) ─
 function _fixHeight() {
     const el = document.getElementById('plugin-' + PLUGIN_ID);
@@ -159,8 +160,9 @@ function _songCard(song, folderName) {
 
     const img = document.createElement('img');
     img.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; object-fit:cover;';
-    img.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
     img.alt = '';
+    img.loading = 'lazy';
+    img.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
 
     // placeholder shown while loading or on error
     const placeholder = document.createElement('div');
@@ -230,6 +232,7 @@ function _songCard(song, folderName) {
         if (typeof window.playSong === 'function') window.playSong(song.filename);
     });
 
+    _makeDraggable(card, song, folderName);
     return card;
 }
 
@@ -246,6 +249,7 @@ function _songRow(song, folderName) {
     const thumb = document.createElement('div');
     thumb.style.cssText = 'shrink:0; width:36px; height:36px; border-radius:4px; overflow:hidden; background:#111827; flex-shrink:0; position:relative;';
     const thumbImg = document.createElement('img');
+    thumbImg.loading = 'lazy';
     thumbImg.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
     thumbImg.alt = '';
     thumbImg.style.cssText = 'width:100%; height:100%; object-fit:cover;';
@@ -317,7 +321,184 @@ function _songRow(song, folderName) {
         if (typeof window.playSong === 'function') window.playSong(song.filename);
     });
 
+    _makeDraggable(row, song, folderName);
     return row;
+}
+
+// ── Pointer-based drag (mousedown/mousemove/mouseup) ─────────────────
+// HTML5 DnD blocks wheel events and gives unreliable edge positions in
+// Electron — pointer events give full control over both.
+let _dragState         = null;
+let _dragCurrentTarget = null;
+
+const _DRAG_THRESH = 5;
+const _DRAG_ZONE   = 150;
+const _DRAG_SPEED  = 50;
+
+let _dragRafId = null;
+let _scrollEl          = null;
+
+function _getScrollEl() {
+    if (_scrollEl) return _scrollEl;
+    var el = document.getElementById('fb-tree');
+    while (el && el !== document.documentElement) {
+        var ov = window.getComputedStyle(el).overflowY;
+        if ((ov === 'auto' || ov === 'scroll' || ov === 'overlay') && el.scrollHeight > el.clientHeight) {
+            _scrollEl = el;
+            return _scrollEl;
+        }
+        el = el.parentElement;
+    }
+    _scrollEl = document.scrollingElement || document.documentElement;
+    return _scrollEl;
+}
+
+function _dragFindTarget(x, y) {
+    const els = document.elementsFromPoint(x, y);
+    for (var i = 0; i < els.length; i++) {
+        if ('dropFolder' in (els[i].dataset || {})) return els[i];
+    }
+    return null;
+}
+
+function _dragHighlight(target) {
+    if (_dragCurrentTarget === target) return;
+    if (_dragCurrentTarget) _dragCurrentTarget.style.outline = '';
+    _dragCurrentTarget = target;
+    if (target) {
+        target.style.outline = '2px solid #3b82f6';
+        target.style.borderRadius = '6px';
+    }
+}
+
+function _dragScrollTick() {
+    if (!_dragState || !_dragState.live) { _dragRafId = null; return; }
+    var h  = window.innerHeight;
+    var y  = _dragState.y;
+    var sc = _getScrollEl();
+    sc.style.scrollBehavior = 'auto';
+    if (y < _DRAG_ZONE)           sc.scrollTop -= _DRAG_SPEED;
+    else if (y > h - _DRAG_ZONE)  sc.scrollTop += _DRAG_SPEED;
+    _dragRafId = requestAnimationFrame(_dragScrollTick);
+}
+
+function _onDragMove(e) {
+    if (!_dragState) return;
+    _dragState.x = e.clientX;
+    _dragState.y = e.clientY;
+
+    if (!_dragState.live) {
+        var dx = _dragState.x - _dragState.startX;
+        var dy = _dragState.y - _dragState.startY;
+        if (Math.sqrt(dx * dx + dy * dy) < _DRAG_THRESH) return;
+        _dragState.live = true;
+        var ghost = document.createElement('div');
+        ghost.style.cssText = 'position:fixed; pointer-events:none; z-index:9999; ' +
+            'padding:5px 12px; background:#1e2130; border:1px solid #3b82f6; ' +
+            'border-radius:6px; color:#e5e7eb; font-size:12px; white-space:nowrap; ' +
+            'box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+        ghost.textContent = _dragState.data.label;
+        document.body.appendChild(ghost);
+        _dragState.ghost = ghost;
+        if (!_dragRafId) _dragRafId = requestAnimationFrame(_dragScrollTick);
+    }
+
+    if (_dragState.ghost) {
+        _dragState.ghost.style.left = (_dragState.x + 14) + 'px';
+        _dragState.ghost.style.top  = (_dragState.y + 14) + 'px';
+    }
+    _dragHighlight(_dragFindTarget(_dragState.x, _dragState.y));
+}
+
+function _onDragUp(e) {
+    if (!_dragState) return;
+    var wasDrag = _dragState.live;
+    var data    = _dragState.data;
+    var x = e.clientX, y = e.clientY;
+    _endPointerDrag();
+
+    if (wasDrag) {
+        // Suppress the click event that fires after mouseup so song doesn't play
+        document.addEventListener('click', function (ce) {
+            ce.stopPropagation();
+            ce.preventDefault();
+        }, { capture: true, once: true });
+        var target = _dragFindTarget(x, y);
+        if (target && data) {
+            var targetFolder = target.dataset.dropFolder;
+            if (targetFolder !== data.folder) _executeDrop(data, targetFolder);
+        }
+    }
+}
+
+function _onDragKeyDown(e) {
+    if (e.key === 'Escape') _endPointerDrag();
+}
+
+function _endPointerDrag() {
+    if (_dragRafId) { cancelAnimationFrame(_dragRafId); _dragRafId = null; }
+    if (_dragState && _dragState.ghost) _dragState.ghost.remove();
+    if (_dragCurrentTarget) { _dragCurrentTarget.style.outline = ''; _dragCurrentTarget = null; }
+    document.body.style.userSelect = '';
+    _dragState = null;
+    document.removeEventListener('mousemove', _onDragMove);
+    document.removeEventListener('mouseup', _onDragUp);
+    document.removeEventListener('keydown', _onDragKeyDown);
+}
+
+async function _executeDrop(data, targetFolder) {
+    let song = null;
+    if (data.folder === '') {
+        const idx = _tree.root_songs.findIndex(s => s.filename === data.filename);
+        if (idx !== -1) song = _tree.root_songs.splice(idx, 1)[0];
+    } else {
+        const folder = _tree.folders.find(f => f.name === data.folder);
+        if (folder) {
+            const idx = folder.songs.findIndex(s => s.filename === data.filename);
+            if (idx !== -1) song = folder.songs.splice(idx, 1)[0];
+        }
+    }
+    if (!song) return;
+
+    if (targetFolder === '') {
+        _tree.root_songs.push(song);
+        _unsortedOpen = true;
+    } else {
+        const dest = _tree.folders.find(f => f.name === targetFolder);
+        if (dest) { dest.songs.push(song); _openFolders.add(targetFolder); }
+    }
+    _render();
+
+    try {
+        await _api('/song/move', { filename: data.filename, folder: targetFolder });
+    } catch (err) {
+        _status('Move failed: ' + err.message, true);
+        await _load();
+    }
+}
+
+function _makeDraggable(el, song, folderName) {
+    el.style.cursor = 'grab';
+    el.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        document.body.style.userSelect = 'none';
+        var sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+        _dragState = {
+            data: { filename: song.filename, folder: folderName || '', label: '↕  ' + (song.title || song.filename) },
+            startX: e.clientX, startY: e.clientY,
+            x: e.clientX, y: e.clientY,
+            live: false, ghost: null,
+        };
+        document.addEventListener('mousemove', _onDragMove);
+        document.addEventListener('mouseup', _onDragUp);
+        document.addEventListener('keydown', _onDragKeyDown);
+    });
+    el.addEventListener('dragstart', function (e) { e.preventDefault(); });
+}
+
+function _makeDropTarget(el, targetFolder) {
+    el.dataset.dropFolder = targetFolder == null ? '' : targetFolder;
 }
 
 // ── Move song dialog ──────────────────────────────────────────────────
@@ -413,20 +594,28 @@ function _folderSection(folder) {
     hdr.appendChild(renameBtn);
     hdr.appendChild(delBtn);
 
-    // song list/grid
+    _makeDropTarget(hdr, folder.name);
+
+    // song list/grid — only populated for open folders to keep initial render fast
     const list = document.createElement('div');
     if (_view === 'grid') {
         list.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; padding:8px 4px 8px 24px;';
-        folder.songs.forEach(s => list.appendChild(_songCard(s, folder.name)));
     } else {
         list.className = 'ml-5 mt-0.5 space-y-0';
-        folder.songs.forEach(s => list.appendChild(_songRow(s, folder.name)));
     }
-    if (!open) list.style.display = 'none';
+    let _listPopulated = open;
+    function _populateFolderList() {
+        folder.songs.forEach(function (s) {
+            list.appendChild(_view === 'grid' ? _songCard(s, folder.name) : _songRow(s, folder.name));
+        });
+    }
+    if (open) { _populateFolderList(); } else { list.style.display = 'none'; }
+    _makeDropTarget(list, folder.name);
 
     hdr.addEventListener('click', function () {
         if (_query) return;
         const nowOpen = list.style.display === 'none';
+        if (nowOpen && !_listPopulated) { _populateFolderList(); _listPopulated = true; }
         list.style.display = nowOpen ? (_view === 'grid' ? 'grid' : '') : 'none';
         chev.style.transform = nowOpen ? 'rotate(90deg)' : '';
         if (nowOpen) _openFolders.add(folder.name);
@@ -441,7 +630,7 @@ function _folderSection(folder) {
 
 // ── Unsorted section ──────────────────────────────────────────────────
 function _unsortedSection(songs) {
-    if (!songs.length) return null;
+    if (!songs.length && _query) return null;
     const wrap = document.createElement('div');
     wrap.className = 'mb-1';
 
@@ -477,19 +666,27 @@ function _unsortedSection(songs) {
     hdr.appendChild(lbl);
     hdr.appendChild(cnt);
 
+    _makeDropTarget(hdr, '');
+
     const list = document.createElement('div');
     if (_view === 'grid') {
         list.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; padding:8px 4px 8px 24px;';
-        songs.forEach(s => list.appendChild(_songCard(s, '')));
     } else {
         list.className = 'ml-5 mt-0.5 space-y-0';
-        songs.forEach(s => list.appendChild(_songRow(s, '')));
     }
-    if (!_unsortedOpen) list.style.display = 'none';
+    let _unsortedPopulated = _unsortedOpen;
+    function _populateUnsortedList() {
+        songs.forEach(function (s) {
+            list.appendChild(_view === 'grid' ? _songCard(s, '') : _songRow(s, ''));
+        });
+    }
+    if (_unsortedOpen) { _populateUnsortedList(); } else { list.style.display = 'none'; }
+    _makeDropTarget(list, '');
 
     hdr.addEventListener('click', function () {
         if (_query) return;
         _unsortedOpen = list.style.display === 'none';
+        if (_unsortedOpen && !_unsortedPopulated) { _populateUnsortedList(); _unsortedPopulated = true; }
         list.style.display = _unsortedOpen ? (_view === 'grid' ? 'grid' : '') : 'none';
         chev.style.transform = _unsortedOpen ? 'rotate(90deg)' : '';
         _store('unsorted_open', String(_unsortedOpen));
