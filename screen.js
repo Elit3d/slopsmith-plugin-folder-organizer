@@ -325,116 +325,155 @@ function _songRow(song, folderName) {
     return row;
 }
 
-// ── Auto-scroll during drag ───────────────────────────────────────────
-(function () {
-    var _rafId    = null;
-    var _dragging = false;
-    var _mouseY   = 0;
-    var ZONE      = 120;
-    var MAX_SPEED = 20;
+// ── Pointer-based drag (mousedown/mousemove/mouseup) ─────────────────
+// HTML5 DnD blocks wheel events and gives unreliable edge positions in
+// Electron — pointer events give full control over both.
+let _dragState = null;
 
-    function _tick() {
-        if (!_dragging) return;
-        var h = window.innerHeight;
-        var speed = 0;
-        if (_mouseY < ZONE) {
-            speed = -MAX_SPEED * Math.pow(1 - _mouseY / ZONE, 2);
-        } else if (_mouseY > h - ZONE) {
-            speed = MAX_SPEED * Math.pow(1 - (h - _mouseY) / ZONE, 2);
-        }
-        if (speed !== 0) {
-            document.documentElement.scrollTop += speed;
-            document.body.scrollTop += speed;
-        }
-        _rafId = requestAnimationFrame(_tick);
+const _DRAG_THRESH = 5;
+const _DRAG_ZONE   = 100;
+const _DRAG_SPEED  = 16;
+
+function _dragFindTarget(x, y) {
+    const els = document.elementsFromPoint(x, y);
+    for (var i = 0; i < els.length; i++) {
+        if ('dropFolder' in (els[i].dataset || {})) return els[i];
     }
-
-    function _stop() {
-        _dragging = false;
-        if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
-    }
-
-    document.addEventListener('dragstart', function () {
-        _dragging = true;
-        if (!_rafId) _rafId = requestAnimationFrame(_tick);
-    });
-    document.addEventListener('dragover', function (e) {
-        _mouseY = e.clientY;
-    });
-    document.addEventListener('dragend', _stop);
-    document.addEventListener('drop', _stop);
-    document.addEventListener('wheel', function (e) {
-        if (!_dragging) return;
-        e.preventDefault();
-        document.documentElement.scrollTop += e.deltaY;
-        document.body.scrollTop += e.deltaY;
-    }, { passive: false });
-})();
-
-// ── Drag and drop ─────────────────────────────────────────────────────
-function _makeDraggable(el, song, folderName) {
-    el.draggable = true;
-    el.addEventListener('dragstart', function (e) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', JSON.stringify({ filename: song.filename, folder: folderName }));
-        setTimeout(function () { el.style.opacity = '0.4'; }, 0);
-    });
-    el.addEventListener('dragend', function () {
-        el.style.opacity = '';
-    });
+    return null;
 }
 
-function _makeDropTarget(hdr, targetFolder) {
-    hdr.addEventListener('dragover', function (e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        hdr.style.outline = '2px solid #3b82f6';
-        hdr.style.borderRadius = '6px';
+function _dragHighlight(target) {
+    document.querySelectorAll('[data-drop-folder]').forEach(function (el) {
+        el.style.outline = '';
     });
-    hdr.addEventListener('dragleave', function (e) {
-        if (!hdr.contains(e.relatedTarget)) {
-            hdr.style.outline = '';
+    if (target) {
+        target.style.outline = '2px solid #3b82f6';
+        target.style.borderRadius = '6px';
+    }
+}
+
+function _dragRafTick() {
+    if (!_dragState || !_dragState.live) return;
+    var h = window.innerHeight;
+    var y = _dragState.y;
+    var speed = 0;
+    if (y < _DRAG_ZONE) {
+        speed = -_DRAG_SPEED * Math.pow(1 - y / _DRAG_ZONE, 2);
+    } else if (y > h - _DRAG_ZONE) {
+        speed = _DRAG_SPEED * Math.pow(1 - (h - y) / _DRAG_ZONE, 2);
+    }
+    if (speed !== 0) window.scrollBy(0, speed);
+    requestAnimationFrame(_dragRafTick);
+}
+
+function _onDragMove(e) {
+    if (!_dragState) return;
+    _dragState.x = e.clientX;
+    _dragState.y = e.clientY;
+
+    if (!_dragState.live) {
+        var dx = _dragState.x - _dragState.startX;
+        var dy = _dragState.y - _dragState.startY;
+        if (Math.sqrt(dx * dx + dy * dy) < _DRAG_THRESH) return;
+        _dragState.live = true;
+        document.body.style.userSelect = 'none';
+        var ghost = document.createElement('div');
+        ghost.style.cssText = 'position:fixed; pointer-events:none; z-index:9999; ' +
+            'padding:5px 12px; background:#1e2130; border:1px solid #3b82f6; ' +
+            'border-radius:6px; color:#e5e7eb; font-size:12px; white-space:nowrap; ' +
+            'box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+        ghost.textContent = _dragState.data.label;
+        document.body.appendChild(ghost);
+        _dragState.ghost = ghost;
+        requestAnimationFrame(_dragRafTick);
+    }
+
+    if (_dragState.ghost) {
+        _dragState.ghost.style.left = (_dragState.x + 14) + 'px';
+        _dragState.ghost.style.top  = (_dragState.y + 14) + 'px';
+    }
+    _dragHighlight(_dragFindTarget(_dragState.x, _dragState.y));
+}
+
+function _onDragUp(e) {
+    if (!_dragState) return;
+    var wasDrag = _dragState.live;
+    var data    = _dragState.data;
+    var x = e.clientX, y = e.clientY;
+    _endPointerDrag();
+
+    if (wasDrag) {
+        // Suppress the click event that fires after mouseup so song doesn't play
+        document.addEventListener('click', function (ce) {
+            ce.stopPropagation();
+            ce.preventDefault();
+        }, { capture: true, once: true });
+        var target = _dragFindTarget(x, y);
+        if (target && data) {
+            var targetFolder = target.dataset.dropFolder;
+            if (targetFolder !== data.folder) _executeDrop(data, targetFolder);
         }
+    }
+}
+
+function _endPointerDrag() {
+    if (_dragState && _dragState.ghost) _dragState.ghost.remove();
+    _dragHighlight(null);
+    document.body.style.userSelect = '';
+    _dragState = null;
+    document.removeEventListener('mousemove', _onDragMove);
+    document.removeEventListener('mouseup', _onDragUp);
+}
+
+async function _executeDrop(data, targetFolder) {
+    let song = null;
+    if (data.folder === '') {
+        const idx = _tree.root_songs.findIndex(s => s.filename === data.filename);
+        if (idx !== -1) song = _tree.root_songs.splice(idx, 1)[0];
+    } else {
+        const folder = _tree.folders.find(f => f.name === data.folder);
+        if (folder) {
+            const idx = folder.songs.findIndex(s => s.filename === data.filename);
+            if (idx !== -1) song = folder.songs.splice(idx, 1)[0];
+        }
+    }
+    if (!song) return;
+
+    if (targetFolder === '') {
+        _tree.root_songs.push(song);
+        _unsortedOpen = true;
+    } else {
+        const dest = _tree.folders.find(f => f.name === targetFolder);
+        if (dest) { dest.songs.push(song); _openFolders.add(targetFolder); }
+    }
+    _render();
+
+    try {
+        await _api('/song/move', { filename: data.filename, folder: targetFolder });
+    } catch (err) {
+        _status('Move failed: ' + err.message, true);
+        await _load();
+    }
+}
+
+function _makeDraggable(el, song, folderName) {
+    el.style.cursor = 'grab';
+    el.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        _dragState = {
+            data: { filename: song.filename, folder: folderName || '', label: '↕  ' + (song.title || song.filename) },
+            startX: e.clientX, startY: e.clientY,
+            x: e.clientX, y: e.clientY,
+            live: false, ghost: null,
+        };
+        document.addEventListener('mousemove', _onDragMove);
+        document.addEventListener('mouseup', _onDragUp);
     });
-    hdr.addEventListener('drop', async function (e) {
-        e.preventDefault();
-        hdr.style.outline = '';
-        let data;
-        try { data = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (_) { return; }
-        if (!data || !data.filename) return;
-        if (data.folder === targetFolder) return;
+    el.addEventListener('dragstart', function (e) { e.preventDefault(); });
+}
 
-        // optimistic update — move in memory and re-render immediately
-        let song = null;
-        if (data.folder === '') {
-            const idx = _tree.root_songs.findIndex(s => s.filename === data.filename);
-            if (idx !== -1) song = _tree.root_songs.splice(idx, 1)[0];
-        } else {
-            const folder = _tree.folders.find(f => f.name === data.folder);
-            if (folder) {
-                const idx = folder.songs.findIndex(s => s.filename === data.filename);
-                if (idx !== -1) song = folder.songs.splice(idx, 1)[0];
-            }
-        }
-        if (!song) return;
-
-        if (targetFolder === '') {
-            _tree.root_songs.push(song);
-            _unsortedOpen = true;
-        } else {
-            const dest = _tree.folders.find(f => f.name === targetFolder);
-            if (dest) { dest.songs.push(song); _openFolders.add(targetFolder); }
-        }
-        _render();
-
-        // sync with backend in the background
-        try {
-            await _api('/song/move', { filename: data.filename, folder: targetFolder });
-        } catch (err) {
-            _status('Move failed: ' + err.message, true);
-            await _load(); // revert by reloading real state
-        }
-    });
+function _makeDropTarget(el, targetFolder) {
+    el.dataset.dropFolder = targetFolder == null ? '' : targetFolder;
 }
 
 // ── Move song dialog ──────────────────────────────────────────────────
@@ -532,21 +571,24 @@ function _folderSection(folder) {
 
     _makeDropTarget(hdr, folder.name);
 
-    // song list/grid
+    // song list/grid — only populated for open folders to keep initial render fast
     const list = document.createElement('div');
     if (_view === 'grid') {
         list.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; padding:8px 4px 8px 24px;';
-        folder.songs.forEach(s => list.appendChild(_songCard(s, folder.name)));
     } else {
         list.className = 'ml-5 mt-0.5 space-y-0';
-        folder.songs.forEach(s => list.appendChild(_songRow(s, folder.name)));
     }
-    if (!open) list.style.display = 'none';
+    let _listPopulated = open;
+    function _populateFolderList() {
+        folder.songs.forEach(s => list.appendChild(_view === 'grid' ? _songCard(s, folder.name) : _songRow(s, folder.name)));
+    }
+    if (open) { _populateFolderList(); } else { list.style.display = 'none'; }
     _makeDropTarget(list, folder.name);
 
     hdr.addEventListener('click', function () {
         if (_query) return;
         const nowOpen = list.style.display === 'none';
+        if (nowOpen && !_listPopulated) { _populateFolderList(); _listPopulated = true; }
         list.style.display = nowOpen ? (_view === 'grid' ? 'grid' : '') : 'none';
         chev.style.transform = nowOpen ? 'rotate(90deg)' : '';
         if (nowOpen) _openFolders.add(folder.name);
@@ -602,17 +644,20 @@ function _unsortedSection(songs) {
     const list = document.createElement('div');
     if (_view === 'grid') {
         list.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; padding:8px 4px 8px 24px;';
-        songs.forEach(s => list.appendChild(_songCard(s, '')));
     } else {
         list.className = 'ml-5 mt-0.5 space-y-0';
-        songs.forEach(s => list.appendChild(_songRow(s, '')));
     }
-    if (!_unsortedOpen) list.style.display = 'none';
+    let _unsortedPopulated = _unsortedOpen;
+    function _populateUnsortedList() {
+        songs.forEach(s => list.appendChild(_view === 'grid' ? _songCard(s, '') : _songRow(s, '')));
+    }
+    if (_unsortedOpen) { _populateUnsortedList(); } else { list.style.display = 'none'; }
     _makeDropTarget(list, '');
 
     hdr.addEventListener('click', function () {
         if (_query) return;
         _unsortedOpen = list.style.display === 'none';
+        if (_unsortedOpen && !_unsortedPopulated) { _populateUnsortedList(); _unsortedPopulated = true; }
         list.style.display = _unsortedOpen ? (_view === 'grid' ? 'grid' : '') : 'none';
         chev.style.transform = _unsortedOpen ? 'rotate(90deg)' : '';
         _store('unsorted_open', String(_unsortedOpen));
