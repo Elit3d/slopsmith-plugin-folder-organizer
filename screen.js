@@ -392,7 +392,6 @@ function _onDragMove(e) {
         var dy = _dragState.y - _dragState.startY;
         if (Math.sqrt(dx * dx + dy * dy) < _DRAG_THRESH) return;
         _dragState.live = true;
-        document.body.style.userSelect = 'none';
         var ghost = document.createElement('div');
         ghost.style.cssText = 'position:fixed; pointer-events:none; z-index:9999; ' +
             'padding:5px 12px; background:#1e2130; border:1px solid #3b82f6; ' +
@@ -482,6 +481,9 @@ function _makeDraggable(el, song, folderName) {
     el.style.cursor = 'grab';
     el.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return;
+        document.body.style.userSelect = 'none';
+        var sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
         _dragState = {
             data: { filename: song.filename, folder: folderName || '', label: '↕  ' + (song.title || song.filename) },
             startX: e.clientX, startY: e.clientY,
