@@ -29,6 +29,7 @@ let _unsortedOpen = _store('unsorted_open') !== 'false';
 let _query       = '';
 let _loaded      = false;
 let _view        = _store('view') || 'list'; // 'list' | 'grid'
+let _sort        = _store('sort') || 'default'; // 'default' | 'title' | 'artist' | 'duration'
 
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
@@ -102,6 +103,26 @@ function _filtered() {
         .map(f => ({ name: f.name, songs: f.songs.filter(_match) }))
         .filter(f => f.songs.length);
     return { folders, root_songs: _tree.root_songs.filter(_match) };
+}
+
+// ── Sort helper ───────────────────────────────────────────────────────
+function _sortSongs(songs) {
+    if (_sort === 'default') return songs;
+    var arr = songs.slice();
+    if (_sort === 'title') {
+        arr.sort(function (a, b) {
+            return (a.title || a.filename).localeCompare(b.title || b.filename);
+        });
+    } else if (_sort === 'artist') {
+        arr.sort(function (a, b) {
+            return (a.artist || '').localeCompare(b.artist || '');
+        });
+    } else if (_sort === 'duration') {
+        arr.sort(function (a, b) {
+            return (a.duration || 0) - (b.duration || 0);
+        });
+    }
+    return arr;
 }
 
 // ── Custom modal (Electron blocks prompt/confirm) ─────────────────────
@@ -605,7 +626,7 @@ function _folderSection(folder) {
     }
     let _listPopulated = open;
     function _populateFolderList() {
-        folder.songs.forEach(function (s) {
+        _sortSongs(folder.songs).forEach(function (s) {
             list.appendChild(_view === 'grid' ? _songCard(s, folder.name) : _songRow(s, folder.name));
         });
     }
@@ -676,7 +697,7 @@ function _unsortedSection(songs) {
     }
     let _unsortedPopulated = _unsortedOpen;
     function _populateUnsortedList() {
-        songs.forEach(function (s) {
+        _sortSongs(songs).forEach(function (s) {
             list.appendChild(_view === 'grid' ? _songCard(s, '') : _songRow(s, ''));
         });
     }
@@ -834,6 +855,16 @@ function _init() {
         _updateViewButtons();
         _render();
     });
+
+    const sortSel = _el('fb-sort');
+    if (sortSel) {
+        sortSel.value = _sort;
+        sortSel.addEventListener('change', function () {
+            _sort = sortSel.value;
+            _store('sort', _sort);
+            _render();
+        });
+    }
 
     search.addEventListener('input', function (e) {
         _query = e.target.value.trim();
