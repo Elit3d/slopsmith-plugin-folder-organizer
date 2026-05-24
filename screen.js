@@ -94,11 +94,48 @@ function _filtered() {
     return { folders, root_songs: _tree.root_songs.filter(_match) };
 }
 
-// ── Confirm dialog ────────────────────────────────────────────────────
-function _confirm(msg) { return window.confirm(msg); }
+// ── Custom modal (Electron blocks prompt/confirm) ─────────────────────
+function _showModal(msg, withInput, defaultVal) {
+    return new Promise(function (resolve) {
+        const modal  = _el('fb-modal');
+        const msgEl  = _el('fb-modal-msg');
+        const input  = _el('fb-modal-input');
+        const okBtn  = _el('fb-modal-ok');
+        const cancel = _el('fb-modal-cancel');
+        if (!modal) { resolve(null); return; }
 
-// ── Prompt dialog ─────────────────────────────────────────────────────
-function _prompt(msg, def) { return window.prompt(msg, def || ''); }
+        msgEl.textContent = msg;
+        if (withInput) {
+            input.style.display = 'block';
+            input.value = defaultVal || '';
+            setTimeout(function () { input.focus(); input.select(); }, 50);
+        } else {
+            input.style.display = 'none';
+        }
+        modal.style.display = 'flex';
+
+        function _done(val) {
+            modal.style.display = 'none';
+            okBtn.removeEventListener('click', _ok);
+            cancel.removeEventListener('click', _cancel);
+            input.removeEventListener('keydown', _key);
+            resolve(val);
+        }
+        function _ok()     { _done(withInput ? input.value.trim() : true); }
+        function _cancel() { _done(null); }
+        function _key(e) {
+            if (e.key === 'Enter')  { e.preventDefault(); _ok(); }
+            if (e.key === 'Escape') { e.preventDefault(); _cancel(); }
+        }
+
+        okBtn.addEventListener('click', _ok);
+        cancel.addEventListener('click', _cancel);
+        if (withInput) input.addEventListener('keydown', _key);
+    });
+}
+
+function _confirm(msg)         { return _showModal(msg, false, ''); }
+function _prompt(msg, def)     { return _showModal(msg, true,  def || ''); }
 
 // ── Song row ──────────────────────────────────────────────────────────
 function _songRow(song, folderName) {
@@ -168,13 +205,13 @@ async function _moveSong(song, currentFolder) {
     if (!_tree) return;
     const folderNames = _tree.folders.map(f => f.name).filter(n => n !== currentFolder);
     const options = ['(Unsorted)', ...folderNames];
-    const choice = _prompt(
-        'Move "' + (song.title || song.filename) + '" to folder:\n' +
+    const choice = await _prompt(
+        'Move "' + (song.title || song.filename) + '" to:\n' +
         options.map((n, i) => i + ': ' + n).join('\n') +
         '\n\nEnter number or folder name:',
         ''
     );
-    if (choice === null) return;
+    if (!choice && choice !== 0) return;
     let dest = '';
     const idx = parseInt(choice, 10);
     if (!isNaN(idx) && idx >= 0 && idx < options.length) {
@@ -186,7 +223,7 @@ async function _moveSong(song, currentFolder) {
         await _api('/song/move', { filename: song.filename, folder: dest });
         await _load();
     } catch (err) {
-        alert('Move failed: ' + err.message);
+        await _prompt('Move failed: ' + err.message, '');
     }
 }
 
@@ -335,19 +372,19 @@ function _unsortedSection(songs) {
 
 // ── Folder management ─────────────────────────────────────────────────
 async function _createFolder() {
-    const name = _prompt('New folder name:');
+    const name = await _prompt('New folder name:');
     if (!name || !name.trim()) return;
     try {
         await _api('/folder/create', { name: name.trim() });
         _openFolders.add(name.trim());
         await _load();
     } catch (err) {
-        alert('Create failed: ' + err.message);
+        await _prompt('Create failed: ' + err.message);
     }
 }
 
 async function _renameFolder(oldName) {
-    const newName = _prompt('Rename "' + oldName + '" to:', oldName);
+    const newName = await _prompt('Rename "' + oldName + '" to:', oldName);
     if (!newName || !newName.trim() || newName.trim() === oldName) return;
     try {
         await _api('/folder/rename', { old: oldName, new: newName.trim() });
@@ -358,7 +395,7 @@ async function _renameFolder(oldName) {
         }
         await _load();
     } catch (err) {
-        alert('Rename failed: ' + err.message);
+        await _prompt('Rename failed: ' + err.message);
     }
 }
 
@@ -366,14 +403,15 @@ async function _deleteFolder(name, songCount) {
     const msg = songCount > 0
         ? 'Delete "' + name + '"? Its ' + songCount + ' song(s) will be moved to Unsorted.'
         : 'Delete empty folder "' + name + '"?';
-    if (!_confirm(msg)) return;
+    const ok = await _confirm(msg);
+    if (!ok) return;
     try {
         await _api('/folder/delete', { name });
         _openFolders.delete(name);
         _storeJSON('open', [..._openFolders]);
         await _load();
     } catch (err) {
-        alert('Delete failed: ' + err.message);
+        await _prompt('Delete failed: ' + err.message);
     }
 }
 
