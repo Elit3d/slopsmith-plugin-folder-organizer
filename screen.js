@@ -159,7 +159,7 @@ function _songCard(song, folderName) {
 
     const img = document.createElement('img');
     img.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; object-fit:cover;';
-    img.src = '/api/art/' + encodeURIComponent(song.filename);
+    img.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
     img.alt = '';
 
     // placeholder shown while loading or on error
