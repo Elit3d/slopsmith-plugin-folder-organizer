@@ -94,6 +94,7 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 - [ ] Drag-and-drop songs between folders
 - [ ] Sort options within folders (by title, artist, or duration)
 - [ ] Nested subfolders
+- [ ] Auto play song on hover (ability to turn this function on/off)
 - [ ] Bulk move — select multiple songs and move them at once
 
 ---
