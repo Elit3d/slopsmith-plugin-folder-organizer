@@ -33,6 +33,7 @@ let _view        = _store('view') || 'list'; // 'list' | 'grid'
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
 
+
 // ── Force screen to have height (Slopsmith .screen has no height set) ─
 function _fixHeight() {
     const el = document.getElementById('plugin-' + PLUGIN_ID);
@@ -159,8 +160,9 @@ function _songCard(song, folderName) {
 
     const img = document.createElement('img');
     img.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; object-fit:cover;';
-    img.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
     img.alt = '';
+    img.loading = 'lazy';
+    img.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
 
     // placeholder shown while loading or on error
     const placeholder = document.createElement('div');
@@ -247,6 +249,7 @@ function _songRow(song, folderName) {
     const thumb = document.createElement('div');
     thumb.style.cssText = 'shrink:0; width:36px; height:36px; border-radius:4px; overflow:hidden; background:#111827; flex-shrink:0; position:relative;';
     const thumbImg = document.createElement('img');
+    thumbImg.loading = 'lazy';
     thumbImg.src = '/api/song/' + song.filename.split('/').map(encodeURIComponent).join('/') + '/art';
     thumbImg.alt = '';
     thumbImg.style.cssText = 'width:100%; height:100%; object-fit:cover;';
@@ -360,6 +363,12 @@ function _songRow(song, folderName) {
     });
     document.addEventListener('dragend', _stop);
     document.addEventListener('drop', _stop);
+    document.addEventListener('wheel', function (e) {
+        if (!_dragging) return;
+        e.preventDefault();
+        document.documentElement.scrollTop += e.deltaY;
+        document.body.scrollTop += e.deltaY;
+    }, { passive: false });
 })();
 
 // ── Drag and drop ─────────────────────────────────────────────────────
