@@ -47,7 +47,13 @@ def setup(app, context):
         except ValueError:
             filename = p.name
         m = {"filename": filename, "title": None, "artist": None,
-             "album": None, "duration": None}
+             "album": None, "duration": None, "year": None,
+             "tuning": None, "added": None}
+        try:
+            stat = p.stat()
+            m["added"] = stat.st_mtime
+        except Exception:
+            pass
         try:
             raw = context["extract_meta"](p)
             if raw:
@@ -55,6 +61,8 @@ def setup(app, context):
                 m["artist"]   = raw.get("artist")   or raw.get("artistName")
                 m["album"]    = raw.get("album")     or raw.get("albumName")
                 m["duration"] = raw.get("duration")
+                m["year"]     = raw.get("year")
+                m["tuning"]   = raw.get("tuning")
         except Exception as exc:
             log.debug("meta failed for %s: %s", p.name, exc)
         if not m["title"]:

@@ -122,6 +122,18 @@ function _sortSongs(songs) {
         arr.sort(function (a, b) {
             return (a.duration || 0) - (b.duration || 0);
         });
+    } else if (_sort === 'year') {
+        arr.sort(function (a, b) {
+            return (a.year || 0) - (b.year || 0);
+        });
+    } else if (_sort === 'tuning') {
+        arr.sort(function (a, b) {
+            return (a.tuning || '').localeCompare(b.tuning || '');
+        });
+    } else if (_sort === 'added') {
+        arr.sort(function (a, b) {
+            return (a.added || 0) - (b.added || 0);
+        });
     }
     if (_sortDir === 'desc') arr.reverse();
     return arr;
