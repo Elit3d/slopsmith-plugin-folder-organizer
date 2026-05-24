@@ -1,28 +1,86 @@
 # Folder Organizer — Slopsmith Plugin
 
-A Slopsmith plugin that organizes your sloppak DLC songs into a folder tree view, grouped by subfolder name. Adds a **Folders** screen to the navbar with collapsible folders, live search, and one-click playback.
+![Version](https://img.shields.io/badge/version-1.4.4-blue)
+![Platform](https://img.shields.io/badge/platform-Slopsmith%20Desktop-darkblue)
+![Slopsmith](https://img.shields.io/badge/requires-Slopsmith%20v0.2.9+-orange)
+
+A Slopsmith plugin that organizes your sloppak DLC songs into a folder tree view, grouped by subfolder name. Browse your entire library visually with album art, switch between list and grid layouts, and manage folders without ever leaving the app.
+
+---
+
+## Screenshots
+
+![Grid view](assets/grid-view.webp)
+*Grid view — album art cards with title and artist*
+
+![Grid search](assets/grid-search.png)
+*Live search filters instantly across all folders*
+
+![List view](assets/list-view.png)
+*List view — compact rows with album art thumbnails and duration*
+
+![New folder](assets/new-folder.png)
+*Create and manage folders directly in the UI*
+
+---
 
 ## Features
 
-- Folders screen in the navbar showing songs grouped by their DLC subfolder
-- **List view** — compact rows with album art thumbnails, artist, and duration
-- **Grid view** — album art cards with title and artist, switchable via toolbar toggle
-- Collapsible/expandable folders with open state saved across sessions
-- Live search filtering by title, artist, album, or filename
-- Expand All / Collapse All buttons
-- Create, rename, and delete folders directly in the UI
-- Move songs between folders
-- One-click playback — click any song to start playing
-- Press `/` to focus the search box
+- **List & Grid views** — toggle between a compact list with thumbnails or a full album art card grid
+- **Album art** — pulls art automatically for every song in both views
+- **Folder management** — create, rename, and delete folders without leaving the plugin
+- **Move songs** — reassign any song to a different folder on the fly
+- **Live search** — filters by title, artist, album, or filename instantly across all folders
+- **Collapsible folders** — expand/collapse individual folders, open state saved across sessions
+- **Expand All / Collapse All** — manage the whole tree in one click
+- **One-click playback** — click any song to start playing immediately
+- **Keyboard shortcut** — press `/` to jump to the search box
+
+---
 
 ## Installation
 
-Paste this repo URL into the Slopsmith Plugin Manager and click Install:
+1. Open Slopsmith and go to **Plugins → Plugins**
+2. Paste the repo URL and click **Install**:
 
 ```
 https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 ```
 
-## Requirements
+3. The **Folders** screen will appear in the navbar under **Plugins**
 
-- Slopsmith desktop app v0.2.9 or later
+---
+
+## Usage
+
+| Action | How |
+|--------|-----|
+| Switch to grid view | Click the grid icon in the toolbar |
+| Switch to list view | Click the list icon in the toolbar |
+| Play a song | Click any song row or card |
+| Search | Type in the search box or press `/` |
+| Create a folder | Click the folder+ icon in the toolbar |
+| Rename a folder | Hover the folder header → click the pencil icon |
+| Delete a folder | Hover the folder header → click the trash icon |
+| Move a song | Hover the song row → click the folder icon |
+| Expand / collapse a folder | Click the folder header |
+
+---
+
+## Roadmap
+
+- [ ] Drag-and-drop songs between folders
+- [ ] Sort options within folders (by title, artist, or duration)
+- [ ] Nested subfolders
+- [ ] Bulk move — select multiple songs and move them at once
+
+---
+
+## Contributing
+
+Pull requests are welcome. For major changes please open an issue first to discuss what you'd like to change.
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes
+4. Push to the branch and open a pull request
