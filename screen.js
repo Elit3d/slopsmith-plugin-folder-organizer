@@ -171,18 +171,25 @@ function _activeFilterCount() {
 }
 
 function _matchFilters(song) {
+    // Arrangements — include uses OR (song needs at least one selected),
+    //                exclude uses AND (each excluded tag independently removes)
     var arrF    = _filters.arrangements || {};
     var songArr = song.arrangements || [];
+    var onArr   = Object.keys(arrF).filter(function (a) { return arrF[a] === 'on'; });
+    if (onArr.length && !onArr.some(function (a) { return songArr.indexOf(a) !== -1; })) return false;
     for (var a in arrF) {
-        if (arrF[a] === 'on'      && songArr.indexOf(a) === -1) return false;
         if (arrF[a] === 'exclude' && songArr.indexOf(a) !== -1) return false;
     }
+
+    // Stems — same OR-include / AND-exclude logic
     var stemsF    = _filters.stems || {};
     var songStems = song.stems || [];
+    var onStems   = Object.keys(stemsF).filter(function (s) { return stemsF[s] === 'on'; });
+    if (onStems.length && !onStems.some(function (s) { return songStems.indexOf(s) !== -1; })) return false;
     for (var s in stemsF) {
-        if (stemsF[s] === 'on'      && songStems.indexOf(s) === -1) return false;
         if (stemsF[s] === 'exclude' && songStems.indexOf(s) !== -1) return false;
     }
+
     if (_filters.lyrics === 'on'      && !song.lyrics) return false;
     if (_filters.lyrics === 'exclude' &&  song.lyrics) return false;
     var tunings = _filters.tunings || [];
@@ -309,8 +316,11 @@ function _buildSongBadges(song) {
         'max-height:0; opacity:0; overflow:hidden; margin-top:0; ' +
         'transition:max-height 0.2s ease, opacity 0.15s, margin-top 0.15s;';
     var any = false;
+    var _seenArr  = {};
+    var _seenStem = {};
 
     (song.arrangements || []).forEach(function (a) {
+        if (_seenArr[a]) return; _seenArr[a] = true;
         var active = ((_filters.arrangements || {})[a] === 'on');
         var b = _badge(a, active, 'arrangement');
         b.addEventListener('click', function (e) {
@@ -323,6 +333,7 @@ function _buildSongBadges(song) {
     });
 
     (song.stems || []).forEach(function (s) {
+        if (_seenStem[s]) return; _seenStem[s] = true;
         var active = ((_filters.stems || {})[s] === 'on');
         var b = _badge(s, active, 'stem');
         b.addEventListener('click', function (e) {
