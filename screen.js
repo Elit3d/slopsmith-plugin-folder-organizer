@@ -324,37 +324,42 @@ function _songRow(song, folderName) {
 
 // ── Auto-scroll during drag ───────────────────────────────────────────
 (function () {
-    var _rafId = null;
-    var _scrollSpeed = 0;
-    var ZONE = 120;
-    var MAX_SPEED = 18;
+    var _rafId    = null;
+    var _dragging = false;
+    var _mouseY   = 0;
+    var ZONE      = 120;
+    var MAX_SPEED = 20;
 
     function _tick() {
-        if (_scrollSpeed !== 0) window.scrollBy(0, _scrollSpeed);
+        if (!_dragging) return;
+        var h = window.innerHeight;
+        var speed = 0;
+        if (_mouseY < ZONE) {
+            speed = -MAX_SPEED * Math.pow(1 - _mouseY / ZONE, 2);
+        } else if (_mouseY > h - ZONE) {
+            speed = MAX_SPEED * Math.pow(1 - (h - _mouseY) / ZONE, 2);
+        }
+        if (speed !== 0) {
+            document.documentElement.scrollTop += speed;
+            document.body.scrollTop += speed;
+        }
         _rafId = requestAnimationFrame(_tick);
     }
 
-    document.addEventListener('dragover', function (e) {
-        var y = e.clientY;
-        var h = window.innerHeight;
-        if (y < ZONE) {
-            _scrollSpeed = -MAX_SPEED * (1 - y / ZONE);
-        } else if (y > h - ZONE) {
-            _scrollSpeed = MAX_SPEED * (1 - (h - y) / ZONE);
-        } else {
-            _scrollSpeed = 0;
-        }
+    function _stop() {
+        _dragging = false;
+        if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+    }
+
+    document.addEventListener('dragstart', function () {
+        _dragging = true;
         if (!_rafId) _rafId = requestAnimationFrame(_tick);
     });
-
-    document.addEventListener('dragend', function () {
-        _scrollSpeed = 0;
-        if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+    document.addEventListener('dragover', function (e) {
+        _mouseY = e.clientY;
     });
-    document.addEventListener('drop', function () {
-        _scrollSpeed = 0;
-        if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
-    });
+    document.addEventListener('dragend', _stop);
+    document.addEventListener('drop', _stop);
 })();
 
 // ── Drag and drop ─────────────────────────────────────────────────────
