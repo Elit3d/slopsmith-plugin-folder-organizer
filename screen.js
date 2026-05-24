@@ -354,13 +354,36 @@ function _makeDropTarget(hdr, targetFolder) {
         try { data = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (_) { return; }
         if (!data || !data.filename) return;
         if (data.folder === targetFolder) return;
+
+        // optimistic update — move in memory and re-render immediately
+        let song = null;
+        if (data.folder === '') {
+            const idx = _tree.root_songs.findIndex(s => s.filename === data.filename);
+            if (idx !== -1) song = _tree.root_songs.splice(idx, 1)[0];
+        } else {
+            const folder = _tree.folders.find(f => f.name === data.folder);
+            if (folder) {
+                const idx = folder.songs.findIndex(s => s.filename === data.filename);
+                if (idx !== -1) song = folder.songs.splice(idx, 1)[0];
+            }
+        }
+        if (!song) return;
+
+        if (targetFolder === '') {
+            _tree.root_songs.push(song);
+            _unsortedOpen = true;
+        } else {
+            const dest = _tree.folders.find(f => f.name === targetFolder);
+            if (dest) { dest.songs.push(song); _openFolders.add(targetFolder); }
+        }
+        _render();
+
+        // sync with backend in the background
         try {
             await _api('/song/move', { filename: data.filename, folder: targetFolder });
-            if (targetFolder) _openFolders.add(targetFolder);
-            else _unsortedOpen = true;
-            await _load();
         } catch (err) {
             _status('Move failed: ' + err.message, true);
+            await _load(); // revert by reloading real state
         }
     });
 }
