@@ -89,6 +89,22 @@
     </svg>
   </button>
 
+  <!-- filters -->
+  <button id="fb-filter" title="Filters"
+          class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors"
+          style="position:relative;">
+    <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+      <path fill-rule="evenodd"
+            d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z"
+            clip-rule="evenodd"/>
+    </svg>
+    <span id="fb-filter-badge"
+          style="display:none; position:absolute; top:-2px; right:-2px; min-width:14px; height:14px;
+                 padding:0 3px; border-radius:7px; background:#3b82f6; color:#fff;
+                 font-size:9px; font-weight:700; line-height:14px; text-align:center;
+                 box-sizing:border-box;"></span>
+  </button>
+
   <!-- reload -->
   <button id="fb-reload" title="Reload"
           class="p-1.5 rounded text-gray-400 hover:text-white hover:bg-dark-400 transition-colors">
@@ -104,6 +120,16 @@
 
 <!-- ── tree ─────────────────────────────────────────────────────────── -->
 <div id="fb-tree" class="px-2 py-2" style="padding-top: 120px;"></div>
+
+<!-- ── filter backdrop ───────────────────────────────────────────────── -->
+<div id="fb-filter-backdrop"
+     style="display:none; position:fixed; inset:0; z-index:44;"></div>
+
+<!-- ── filter panel ──────────────────────────────────────────────────── -->
+<div id="fb-filter-panel"
+     style="display:none; position:fixed; top:64px; right:0; bottom:0; width:300px;
+            z-index:45; background:#0f1117; border-left:1px solid #1f2937;
+            flex-direction:column; overflow:hidden;"></div>
 
 <!-- ── custom modal ──────────────────────────────────────────────────── -->
 <div id="fb-modal" style="display:none; position:fixed; inset:0; z-index:9999;

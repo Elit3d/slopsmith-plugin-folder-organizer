@@ -32,6 +32,18 @@ let _view        = _store('view') || 'list'; // 'list' | 'grid'
 let _sort        = _store('sort') || 'default'; // 'default' | 'title' | 'artist' | 'duration'
 let _sortDir     = _store('sortDir') || 'asc';  // 'asc' | 'desc'
 
+// ── Filter constants ──────────────────────────────────────────────────
+const _ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
+const _STEMS        = ['Drums', 'Bass', 'Vocals', 'Guitar', 'Piano', 'Other'];
+
+var _filtersRaw = _storeJSON('filters') || {};
+let _filters = {
+    arrangements: _filtersRaw.arrangements || {},
+    stems:        _filtersRaw.stems        || {},
+    lyrics:       _filtersRaw.lyrics       || 'any',
+    tunings:      _filtersRaw.tunings      || [],
+};
+
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
 
@@ -99,11 +111,309 @@ function _match(song) {
 
 function _filtered() {
     if (!_tree) return { folders: [], root_songs: [] };
-    if (!_query) return _tree;
+    const hasQuery   = !!_query;
+    const hasFilters = _activeFilterCount() > 0;
+    if (!hasQuery && !hasFilters) return _tree;
+    function _keep(s) {
+        return (!hasQuery || _match(s)) && (!hasFilters || _matchFilters(s));
+    }
     const folders = _tree.folders
-        .map(f => ({ name: f.name, songs: f.songs.filter(_match) }))
-        .filter(f => f.songs.length);
-    return { folders, root_songs: _tree.root_songs.filter(_match) };
+        .map(function (f) { return { name: f.name, songs: f.songs.filter(_keep) }; })
+        .filter(function (f) { return f.songs.length; });
+    return { folders: folders, root_songs: _tree.root_songs.filter(_keep) };
+}
+
+// ── Filter helpers ────────────────────────────────────────────────────
+function _saveFilters() {
+    _storeJSON('filters', _filters);
+}
+
+function _activeFilterCount() {
+    var n = 0;
+    Object.values(_filters.arrangements).forEach(function (v) { if (v !== 'any') n++; });
+    Object.values(_filters.stems).forEach(function (v) { if (v !== 'any') n++; });
+    if (_filters.lyrics !== 'any') n++;
+    n += (_filters.tunings || []).length;
+    return n;
+}
+
+function _matchFilters(song) {
+    // Arrangements
+    var arr = song.arrangements || [];
+    var arrF = _filters.arrangements || {};
+    for (var a in arrF) {
+        if (arrF[a] === 'require' && arr.indexOf(a) === -1) return false;
+        if (arrF[a] === 'exclude' && arr.indexOf(a) !== -1) return false;
+    }
+    // Stems
+    var stems = song.stems || [];
+    var stemsF = _filters.stems || {};
+    for (var s in stemsF) {
+        if (stemsF[s] === 'require' && stems.indexOf(s) === -1) return false;
+        if (stemsF[s] === 'exclude' && stems.indexOf(s) !== -1) return false;
+    }
+    // Lyrics
+    if (_filters.lyrics === 'require' && !song.lyrics) return false;
+    if (_filters.lyrics === 'exclude' &&  song.lyrics) return false;
+    // Tunings
+    var tunings = _filters.tunings || [];
+    if (tunings.length && tunings.indexOf(song.tuning) === -1) return false;
+    return true;
+}
+
+function _getTunings() {
+    if (!_tree) return [];
+    var counts = {};
+    var allSongs = _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    );
+    allSongs.forEach(function (s) {
+        if (s.tuning) counts[s.tuning] = (counts[s.tuning] || 0) + 1;
+    });
+    return Object.keys(counts)
+        .sort(function (a, b) { return counts[b] - counts[a]; })
+        .map(function (t) { return { tuning: t, count: counts[t] }; });
+}
+
+function _cyclePillState(cur) {
+    return cur === 'any' ? 'require' : cur === 'require' ? 'exclude' : 'any';
+}
+
+function _applyPillStyle(el, state) {
+    if (state === 'require') {
+        el.style.background   = '#1d4ed8';
+        el.style.borderColor  = '#2563eb';
+        el.style.color        = '#fff';
+    } else if (state === 'exclude') {
+        el.style.background   = '#7f1d1d';
+        el.style.borderColor  = '#991b1b';
+        el.style.color        = '#fca5a5';
+    } else {
+        el.style.background   = 'transparent';
+        el.style.borderColor  = '#374151';
+        el.style.color        = '#6b7280';
+    }
+}
+
+function _pillLabel(state, name) {
+    return (state === 'require' ? '✓ ' : state === 'exclude' ? '✕ ' : '') + name;
+}
+
+function _updateFilterBadge() {
+    var badge = _el('fb-filter-badge');
+    if (!badge) return;
+    var n = _activeFilterCount();
+    badge.style.display = n ? 'block' : 'none';
+    badge.textContent   = String(n);
+}
+
+// ── Filter panel sections ─────────────────────────────────────────────
+function _makePillSection(sectionTitle, subtitle, items, filterKey) {
+    var section = document.createElement('div');
+    section.style.marginBottom = '20px';
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; margin-bottom:4px;';
+    hdr.textContent = sectionTitle;
+    section.appendChild(hdr);
+
+    if (subtitle) {
+        var sub = document.createElement('div');
+        sub.style.cssText = 'font-size:11px; color:#4b5563; margin-bottom:8px;';
+        sub.textContent = subtitle;
+        section.appendChild(sub);
+    }
+
+    var pills = document.createElement('div');
+    pills.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px;';
+
+    items.forEach(function (item) {
+        var state = (_filters[filterKey] || {})[item] || 'any';
+        var pill = document.createElement('button');
+        pill.style.cssText = 'padding:4px 12px; border-radius:20px; border:1px solid; font-size:12px; cursor:pointer;';
+        _applyPillStyle(pill, state);
+        pill.textContent = _pillLabel(state, item);
+        pill.addEventListener('click', function () {
+            if (!_filters[filterKey]) _filters[filterKey] = {};
+            var next = _cyclePillState((_filters[filterKey][item] || 'any'));
+            _filters[filterKey][item] = next;
+            _saveFilters();
+            _applyPillStyle(pill, next);
+            pill.textContent = _pillLabel(next, item);
+            _updateFilterBadge();
+            _render();
+        });
+        pills.appendChild(pill);
+    });
+
+    section.appendChild(pills);
+    return section;
+}
+
+function _makeLyricsSection() {
+    var section = document.createElement('div');
+    section.style.marginBottom = '20px';
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; margin-bottom:8px;';
+    hdr.textContent = 'LYRICS';
+    section.appendChild(hdr);
+
+    var state = _filters.lyrics || 'any';
+    var pill = document.createElement('button');
+    pill.style.cssText = 'padding:4px 12px; border-radius:20px; border:1px solid; font-size:12px; cursor:pointer;';
+    _applyPillStyle(pill, state);
+    pill.textContent = _pillLabel(state, 'Lyrics');
+    pill.addEventListener('click', function () {
+        var next = _cyclePillState(_filters.lyrics || 'any');
+        _filters.lyrics = next;
+        _saveFilters();
+        _applyPillStyle(pill, next);
+        pill.textContent = _pillLabel(next, 'Lyrics');
+        _updateFilterBadge();
+        _render();
+    });
+    section.appendChild(pill);
+    return section;
+}
+
+function _makeTuningSection() {
+    var section = document.createElement('div');
+    section.style.marginBottom = '20px';
+
+    var tunings = _getTunings();
+    if (!tunings.length) return section;
+
+    // header row with "N selected / All tunings" label
+    var titleRow = document.createElement('div');
+    titleRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;';
+
+    var titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280;';
+    titleEl.textContent = 'TUNING';
+
+    var allLbl = document.createElement('span');
+    allLbl.style.cssText = 'font-size:11px; color:#6b7280;';
+    function _updateAllLbl() {
+        var n = (_filters.tunings || []).length;
+        allLbl.textContent = n ? n + ' selected' : 'All tunings';
+    }
+    _updateAllLbl();
+
+    titleRow.appendChild(titleEl);
+    titleRow.appendChild(allLbl);
+    section.appendChild(titleRow);
+
+    var list = document.createElement('div');
+    list.style.cssText = 'display:flex; flex-direction:column; gap:2px;';
+
+    tunings.forEach(function (entry) {
+        var row = document.createElement('label');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:5px 4px; cursor:pointer; border-radius:4px;';
+        row.addEventListener('mouseenter', function () { row.style.background = '#111827'; });
+        row.addEventListener('mouseleave', function () { row.style.background = ''; });
+
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'width:14px; height:14px; accent-color:#3b82f6; cursor:pointer; flex-shrink:0;';
+        cb.checked = (_filters.tunings || []).indexOf(entry.tuning) !== -1;
+
+        var lbl = document.createElement('span');
+        lbl.style.cssText = 'flex:1; font-size:13px; color:#d1d5db;';
+        lbl.textContent = entry.tuning;
+
+        var cnt = document.createElement('span');
+        cnt.style.cssText = 'font-size:12px; color:#6b7280; font-variant-numeric:tabular-nums;';
+        cnt.textContent = entry.count;
+
+        cb.addEventListener('change', function () {
+            if (!_filters.tunings) _filters.tunings = [];
+            if (cb.checked) {
+                if (_filters.tunings.indexOf(entry.tuning) === -1)
+                    _filters.tunings.push(entry.tuning);
+            } else {
+                _filters.tunings = _filters.tunings.filter(function (t) { return t !== entry.tuning; });
+            }
+            _saveFilters();
+            _updateAllLbl();
+            _updateFilterBadge();
+            _render();
+        });
+
+        row.appendChild(cb);
+        row.appendChild(lbl);
+        row.appendChild(cnt);
+        list.appendChild(row);
+    });
+
+    section.appendChild(list);
+    return section;
+}
+
+// ── Filter panel open / close ─────────────────────────────────────────
+function _buildFilterPanel() {
+    var panel = _el('fb-filter-panel');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    // header
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #1f2937; flex-shrink:0;';
+    var titleEl = document.createElement('span');
+    titleEl.style.cssText = 'font-size:15px; font-weight:600; color:#e5e7eb;';
+    titleEl.textContent = 'Filters';
+    var closeBtn = document.createElement('button');
+    closeBtn.style.cssText = 'padding:4px; color:#6b7280; background:none; border:none; cursor:pointer; border-radius:4px;';
+    closeBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>';
+    closeBtn.addEventListener('click', _closeFilterPanel);
+    hdr.appendChild(titleEl);
+    hdr.appendChild(closeBtn);
+    panel.appendChild(hdr);
+
+    // scrollable content
+    var content = document.createElement('div');
+    content.style.cssText = 'overflow-y:auto; flex:1; padding:16px 20px;';
+    content.appendChild(_makePillSection('ARRANGEMENTS', 'Click cycles: any → require → exclude', _ARRANGEMENTS, 'arrangements'));
+    content.appendChild(_makePillSection('STEMS (sloppak)', 'Click cycles: any → require → exclude', _STEMS, 'stems'));
+    content.appendChild(_makeLyricsSection());
+    content.appendChild(_makeTuningSection());
+    panel.appendChild(content);
+
+    // footer
+    var footer = document.createElement('div');
+    footer.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-top:1px solid #1f2937; flex-shrink:0;';
+    var clearBtn = document.createElement('button');
+    clearBtn.style.cssText = 'font-size:13px; color:#6b7280; background:none; border:none; cursor:pointer; padding:0;';
+    clearBtn.textContent = 'Clear all';
+    clearBtn.addEventListener('click', function () {
+        _filters = { arrangements: {}, stems: {}, lyrics: 'any', tunings: [] };
+        _saveFilters();
+        _updateFilterBadge();
+        _render();
+        _buildFilterPanel(); // reset pill states
+    });
+    var doneBtn = document.createElement('button');
+    doneBtn.style.cssText = 'padding:6px 20px; border-radius:6px; border:none; background:#3b82f6; color:#fff; font-size:13px; cursor:pointer; font-weight:500;';
+    doneBtn.textContent = 'Done';
+    doneBtn.addEventListener('click', _closeFilterPanel);
+    footer.appendChild(clearBtn);
+    footer.appendChild(doneBtn);
+    panel.appendChild(footer);
+}
+
+function _openFilterPanel() {
+    _buildFilterPanel();
+    var panel    = _el('fb-filter-panel');
+    var backdrop = _el('fb-filter-backdrop');
+    if (panel)    panel.style.display    = 'flex';
+    if (backdrop) backdrop.style.display = 'block';
+}
+
+function _closeFilterPanel() {
+    var panel    = _el('fb-filter-panel');
+    var backdrop = _el('fb-filter-backdrop');
+    if (panel)    panel.style.display    = 'none';
+    if (backdrop) backdrop.style.display = 'none';
 }
 
 // ── Sort helper ───────────────────────────────────────────────────────
@@ -836,6 +1146,8 @@ function _init() {
     const expandAll   = _el('fb-expand-all');
     const collapseAll = _el('fb-collapse-all');
     const newFolder   = _el('fb-new-folder');
+    const filterBtn   = _el('fb-filter');
+    const filterBack  = _el('fb-filter-backdrop');
     const viewList    = _el('fb-view-list');
     const viewGrid    = _el('fb-view-grid');
     const treeEl      = _el('fb-tree');
@@ -923,6 +1235,9 @@ function _init() {
     expandAll.addEventListener('click', _expandAll);
     collapseAll.addEventListener('click', _collapseAll);
     newFolder.addEventListener('click', _createFolder);
+    if (filterBtn)  filterBtn.addEventListener('click', _openFilterPanel);
+    if (filterBack) filterBack.addEventListener('click', _closeFilterPanel);
+    _updateFilterBadge();
 
     if (!_loaded) _load();
 }

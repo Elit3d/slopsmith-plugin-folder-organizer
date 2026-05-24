@@ -48,7 +48,8 @@ def setup(app, context):
             filename = p.name
         m = {"filename": filename, "title": None, "artist": None,
              "album": None, "duration": None, "year": None,
-             "tuning": None, "added": None}
+             "tuning": None, "added": None,
+             "arrangements": [], "stems": [], "lyrics": False}
         try:
             stat = p.stat()
             m["added"] = stat.st_mtime
@@ -63,6 +64,20 @@ def setup(app, context):
                 m["duration"] = raw.get("duration")
                 m["year"]     = raw.get("year")
                 m["tuning"]   = raw.get("tuning")
+                # arrangements — expect a list e.g. ["Lead", "Rhythm"]
+                raw_arr = raw.get("arrangements") or []
+                m["arrangements"] = list(raw_arr) if isinstance(raw_arr, (list, tuple)) \
+                    else ([raw_arr] if raw_arr else [])
+                # stems — expect a list e.g. ["Drums", "Vocals"]
+                raw_stems = raw.get("stems") or []
+                m["stems"] = list(raw_stems) if isinstance(raw_stems, (list, tuple)) \
+                    else ([raw_stems] if raw_stems else [])
+                # lyrics — boolean or truthy string
+                lyr = raw.get("lyrics") or raw.get("hasLyrics") or False
+                if isinstance(lyr, str):
+                    m["lyrics"] = lyr.lower() not in ('', 'false', 'no', '0')
+                else:
+                    m["lyrics"] = bool(lyr)
         except Exception as exc:
             log.debug("meta failed for %s: %s", p.name, exc)
         if not m["title"]:
