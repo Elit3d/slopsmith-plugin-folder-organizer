@@ -1238,7 +1238,7 @@ function _folderSection(folder, depth) {
     // Use mouseover (bubbles) + stopPropagation so only the innermost folder activates.
     // A module-level _hoveredFolder ref ensures the previously active folder is always
     // cleared before the new one lights up — avoiding the ancestor stack-highlight bug.
-    wrap.style.cssText = 'border-radius:6px;';
+    wrap.style.cssText = 'border-radius:6px; margin:1px 0;';
     wrap.addEventListener('mouseover', function (e) {
         e.stopPropagation();
         if (_hoveredFolder && _hoveredFolder.wrap !== wrap) {
