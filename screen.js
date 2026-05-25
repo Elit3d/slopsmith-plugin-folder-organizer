@@ -31,6 +31,7 @@ let _loaded      = false;
 let _view        = _store('view') || 'list'; // 'list' | 'grid'
 let _sort        = _store('sort') || 'default'; // 'default' | 'title' | 'artist' | 'duration'
 let _sortDir     = _store('sortDir') || 'asc';  // 'asc' | 'desc'
+let _hoveredFolder = null; // { wrap, hdr, btnGroup } — only the innermost folder is active
 
 // ── Core arrangement order (pinned to top of filter panel) ───────────
 const _CORE_ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
@@ -1126,10 +1127,8 @@ function _folderSection(folder, depth) {
 
     // header
     const hdr = document.createElement('div');
-    hdr.className = [
-        'flex items-center gap-2 px-3 py-2 rounded cursor-pointer',
-        'hover:bg-dark-500 transition-colors duration-100 group',
-    ].join(' ');
+    hdr.className = 'flex items-center gap-2 px-3 py-2 rounded cursor-pointer group';
+    hdr.style.transition = 'background-color 0.1s';
 
     // chevron
     const chev = document.createElement('span');
@@ -1236,6 +1235,28 @@ function _folderSection(folder, depth) {
     btnGroup.appendChild(renameBtn);
     btnGroup.appendChild(delBtn);
 
+    // Use mouseover (bubbles) + stopPropagation so only the innermost folder activates.
+    // A module-level _hoveredFolder ref ensures the previously active folder is always
+    // cleared before the new one lights up — avoiding the ancestor stack-highlight bug.
+    wrap.style.cssText = 'border-radius:6px;';
+    wrap.addEventListener('mouseover', function (e) {
+        e.stopPropagation();
+        if (_hoveredFolder && _hoveredFolder.wrap !== wrap) {
+            _hoveredFolder.hdr.style.backgroundColor = '';
+            _hoveredFolder.wrap.style.backgroundColor = '';
+        }
+        _hoveredFolder = { wrap, hdr, btnGroup };
+        hdr.style.backgroundColor = 'rgba(55,65,81,0.5)';
+        wrap.style.backgroundColor = 'rgba(55,65,81,0.12)';
+    });
+    wrap.addEventListener('mouseout', function (e) {
+        if (wrap.contains(e.relatedTarget)) return;
+        hdr.style.backgroundColor = '';
+        wrap.style.backgroundColor = '';
+        if (_hoveredFolder && _hoveredFolder.wrap === wrap) _hoveredFolder = null;
+    });
+
+    // Button reveal — header only
     hdr.addEventListener('mouseenter', function () { btnGroup.style.maxWidth = '160px'; });
     hdr.addEventListener('mouseleave', function () { btnGroup.style.maxWidth = '0'; });
 
@@ -1283,8 +1304,9 @@ function _folderSection(folder, depth) {
     // depth > 0: ONE container with a single continuous amber border-left so both
     // songs and child folders are visually grouped under this subfolder.
     // depth == 0: children get their own subtle neutral-border indent; root songs are unbordered.
+    let innerWrap = null;
     if (depth > 0) {
-        const innerWrap = document.createElement('div');
+        innerWrap = document.createElement('div');
         innerWrap.style.cssText = 'margin-left:32px; padding-left:10px; border-left:2px solid rgba(234,179,8,0.35);';
         innerWrap.appendChild(list);
         innerWrap.appendChild(childrenWrap);
@@ -1294,6 +1316,20 @@ function _folderSection(folder, depth) {
         content.appendChild(list);
         content.appendChild(childrenWrap);
     }
+
+    // Clicking blank content area (not on a song/button/subfolder) also collapses
+    content.addEventListener('click', function (e) {
+        if (_query) return;
+        var bgEls = [content, list, childrenWrap];
+        if (innerWrap) bgEls.push(innerWrap);
+        if (bgEls.indexOf(e.target) === -1) return;
+        if (content.style.display !== 'none') {
+            content.style.display = 'none';
+            chev.style.transform = '';
+            _openFolders.delete(folder.path);
+            _storeJSON('open', [..._openFolders]);
+        }
+    });
 
     hdr.addEventListener('click', function () {
         if (_query) return;
@@ -1473,6 +1509,7 @@ function _collapseAll() {
 
 // ── Render ────────────────────────────────────────────────────────────
 function _render() {
+    _hoveredFolder = null; // DOM is rebuilt; discard any stale reference
     const treeEl = _el('fb-tree');
     if (!treeEl) return;
 
