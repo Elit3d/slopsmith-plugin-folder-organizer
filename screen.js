@@ -1157,7 +1157,7 @@ function _folderSection(folder, depth) {
 
     // subfolder create button
     const subBtn = document.createElement('button');
-    subBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+    subBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400';
     subBtn.title = 'New subfolder';
     subBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
         <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
@@ -1170,7 +1170,7 @@ function _folderSection(folder, depth) {
 
     // rename button
     const renameBtn = document.createElement('button');
-    renameBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+    renameBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400';
     renameBtn.title = 'Rename folder';
     renameBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
         <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>`;
@@ -1181,7 +1181,7 @@ function _folderSection(folder, depth) {
 
     // delete button
     const delBtn = document.createElement('button');
-    delBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-red-400 hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+    delBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-red-400 hover:bg-dark-400';
     delBtn.title = 'Delete folder';
     delBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
         <path fill-rule="evenodd"
@@ -1196,7 +1196,7 @@ function _folderSection(folder, depth) {
     const expandChildrenBtn  = document.createElement('button');
     const collapseChildrenBtn = document.createElement('button');
     if (folder.children && folder.children.length) {
-        expandChildrenBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+        expandChildrenBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400';
         expandChildrenBtn.title = 'Expand all subfolders';
         expandChildrenBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="w-3.5 h-3.5">
             <path d="M5 8l5 5 5-5"/>
@@ -1210,7 +1210,7 @@ function _folderSection(folder, depth) {
             _render();
         });
 
-        collapseChildrenBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+        collapseChildrenBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400';
         collapseChildrenBtn.title = 'Collapse all subfolders';
         collapseChildrenBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="w-3.5 h-3.5">
             <path d="M5 12l5-5 5 5"/>
@@ -1224,17 +1224,27 @@ function _folderSection(folder, depth) {
         });
     }
 
+    // Collapsing button group — takes 0 width when hidden, slides in on hover,
+    // pushing the song count smoothly to the left.
+    const btnGroup = document.createElement('div');
+    btnGroup.style.cssText = 'display:flex; align-items:center; gap:2px; max-width:0; overflow:hidden; transition:max-width 0.2s ease;';
+    if (folder.children && folder.children.length) {
+        btnGroup.appendChild(expandChildrenBtn);
+        btnGroup.appendChild(collapseChildrenBtn);
+    }
+    btnGroup.appendChild(subBtn);
+    btnGroup.appendChild(renameBtn);
+    btnGroup.appendChild(delBtn);
+
+    hdr.addEventListener('mouseenter', function () { btnGroup.style.maxWidth = '160px'; });
+    hdr.addEventListener('mouseleave', function () { btnGroup.style.maxWidth = '0'; });
+
+    // cnt sits after btnGroup so it rests at the far right when buttons are hidden
     hdr.appendChild(chev);
     hdr.appendChild(ico);
     hdr.appendChild(lbl);
+    hdr.appendChild(btnGroup);
     hdr.appendChild(cnt);
-    if (folder.children && folder.children.length) {
-        hdr.appendChild(expandChildrenBtn);
-        hdr.appendChild(collapseChildrenBtn);
-    }
-    hdr.appendChild(subBtn);
-    hdr.appendChild(renameBtn);
-    hdr.appendChild(delBtn);
 
     _makeDropTarget(hdr, folder.path);
 
@@ -1275,12 +1285,12 @@ function _folderSection(folder, depth) {
     // depth == 0: children get their own subtle neutral-border indent; root songs are unbordered.
     if (depth > 0) {
         const innerWrap = document.createElement('div');
-        innerWrap.style.cssText = 'margin-left:20px; padding-left:10px; border-left:2px solid rgba(234,179,8,0.35);';
+        innerWrap.style.cssText = 'margin-left:32px; padding-left:10px; border-left:2px solid rgba(234,179,8,0.35);';
         innerWrap.appendChild(list);
         innerWrap.appendChild(childrenWrap);
         content.appendChild(innerWrap);
     } else {
-        childrenWrap.style.marginLeft = '20px';
+        childrenWrap.style.marginLeft = '32px';
         content.appendChild(list);
         content.appendChild(childrenWrap);
     }
