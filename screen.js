@@ -1039,34 +1039,18 @@ function _findFolderByPath(path, folders) {
 }
 
 async function _executeDrop(data, targetFolder) {
-    let song = null;
-    if (data.folder === '') {
-        const idx = _tree.root_songs.findIndex(s => s.filename === data.filename);
-        if (idx !== -1) song = _tree.root_songs.splice(idx, 1)[0];
-    } else {
-        const folder = _findFolderByPath(data.folder, _tree.folders);
-        if (folder) {
-            const idx = folder.songs.findIndex(s => s.filename === data.filename);
-            if (idx !== -1) song = folder.songs.splice(idx, 1)[0];
-        }
-    }
-    if (!song) return;
-
-    if (targetFolder === '') {
-        _tree.root_songs.push(song);
-        _unsortedOpen = true;
-    } else {
-        const dest = _findFolderByPath(targetFolder, _tree.folders);
-        if (dest) { dest.songs.push(song); _openFolders.add(targetFolder); }
-    }
-    _render();
-
+    // No optimistic tree mutation — the drag ghost gives instant visual
+    // feedback, and racing optimistic updates against _load() caused
+    // songs to snap back when dropping quickly in succession.
+    // Just call the API and reload; on localhost this is imperceptible.
+    if (targetFolder !== '') _openFolders.add(targetFolder);
+    else _unsortedOpen = true;
     try {
         await _api('/song/move', { filename: data.filename, folder: targetFolder });
     } catch (err) {
         _status('Move failed: ' + err.message, true);
-        await _load();
     }
+    await _load();
 }
 
 function _makeDraggable(el, song, folderName) {
