@@ -92,7 +92,6 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 - Hover any song to reveal colour-coded metadata badges (amber = arrangements, rose = lyrics, teal = tuning)
 - Click any hover badge to instantly toggle that filter on/off
 - Hover also shows year and date added separately
-- Press `Esc` to cancel a move song dialog
 
 ### v1.5
 - Drag-and-drop songs between folders
