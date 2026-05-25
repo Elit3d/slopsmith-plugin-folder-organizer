@@ -731,7 +731,10 @@ function _songCard(song, folderName) {
         placeholder.style.display = 'none';
     });
 
-    // duration badge
+    artWrap.appendChild(placeholder);
+    artWrap.appendChild(img);
+
+    // duration badge — appended last so it sits above the image in stacking order
     if (song.duration != null) {
         const badge = document.createElement('span');
         badge.style.cssText = 'position:absolute; bottom:6px; right:6px; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; color:#e5e7eb; background:rgba(0,0,0,0.7);';
@@ -740,9 +743,6 @@ function _songCard(song, folderName) {
         badge.textContent = m + ':' + s;
         artWrap.appendChild(badge);
     }
-
-    artWrap.appendChild(placeholder);
-    artWrap.appendChild(img);
 
     // meta
     const meta = document.createElement('div');
@@ -837,10 +837,12 @@ function _songRow(song, folderName) {
     const meta = document.createElement('div');
     meta.className = 'flex-1 min-w-0';
     const title = document.createElement('div');
-    title.className = 'text-sm text-gray-200 truncate group-hover:text-white';
+    title.className = 'text-gray-200 truncate group-hover:text-white';
+    title.style.cssText = 'font-size:13px; font-weight:600;';
     title.textContent = song.title || song.filename;
     const sub = document.createElement('div');
-    sub.className = 'text-xs text-gray-500 truncate';
+    sub.className = 'text-gray-500 truncate';
+    sub.style.fontSize = '11px';
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
     meta.appendChild(title);
     meta.appendChild(sub);
