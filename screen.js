@@ -1156,19 +1156,20 @@ function _folderSection(folder, depth) {
               d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
               clip-rule="evenodd"/></svg>`;
 
-    // folder icon
+    // folder icon — slightly muted for nested folders
     const ico = document.createElement('span');
-    ico.className = 'shrink-0 w-4 h-4 text-yellow-500';
+    ico.className = 'shrink-0 w-4 h-4 ' + (depth > 0 ? 'text-yellow-600' : 'text-yellow-500');
     ico.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-full h-full">
         <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>`;
 
     const lbl = document.createElement('span');
-    lbl.className = 'flex-1 text-sm font-medium text-gray-200 truncate';
+    lbl.className = 'flex-1 truncate font-medium ' +
+        (depth > 0 ? 'text-xs text-gray-400' : 'text-sm text-gray-200');
     lbl.textContent = folder.name;
 
     const cnt = document.createElement('span');
     cnt.className = 'shrink-0 text-xs text-gray-600 tabular-nums mr-1';
-    cnt.textContent = String(_countDeep(folder));
+    cnt.textContent = String(folder.songs.length);
 
     // subfolder create button
     const subBtn = document.createElement('button');
@@ -1230,9 +1231,9 @@ function _folderSection(folder, depth) {
     }
     _makeDropTarget(list, folder.path);
 
-    // nested children container — indented with a subtle left border
+    // nested children container — indented with a visible left border
     const childrenWrap = document.createElement('div');
-    childrenWrap.style.cssText = 'margin-left:12px; padding-left:4px; border-left:1px solid #1e2030;';
+    childrenWrap.style.cssText = 'margin-left:16px; padding-left:4px; border-left:2px solid #2d3748;';
 
     let _listPopulated = open;
     function _populateFolderList() {
