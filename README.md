@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/platform-Slopsmith%20Desktop-darkblue)
 ![Slopsmith](https://img.shields.io/badge/requires-Slopsmith%20v0.2.9+-orange)
 
-A Slopsmith plugin that organizes your sloppak DLC songs into a folder tree view, grouped by subfolder name. Browse your entire library visually with album art, switch between list and grid layouts, and manage folders without ever leaving the app.
+A ![Slopsmith](https://github.com/byrongamatos/slopsmith) plugin that organizes your sloppak DLC songs into a folder tree view, grouped by subfolder name. Browse your entire library visually with album art, switch between list and grid layouts, and manage folders without ever leaving the app.
 
 ---
 
