@@ -1,6 +1,6 @@
 # Folder Organizer — Slopsmith Plugin
 
-![Version](https://img.shields.io/badge/version-1.6.0-blue)
+![Version](https://img.shields.io/badge/version-1.6.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Slopsmith%20Desktop-darkblue)
 ![Slopsmith](https://img.shields.io/badge/requires-Slopsmith%20v0.2.9+-orange)
 
