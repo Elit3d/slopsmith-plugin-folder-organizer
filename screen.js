@@ -1229,6 +1229,13 @@ function _folderSection(folder, depth) {
     } else {
         list.className = 'ml-5 mt-0.5 space-y-0';
     }
+    // At depth > 0, match the same left-border indent as childrenWrap so songs
+    // are visually grouped with any sibling subfolders inside this folder.
+    if (depth > 0) {
+        list.style.marginLeft  = '16px';
+        list.style.paddingLeft = '4px';
+        list.style.borderLeft  = '2px solid #2d3748';
+    }
     _makeDropTarget(list, folder.path);
 
     // nested children container — indented with a visible left border
@@ -1237,17 +1244,18 @@ function _folderSection(folder, depth) {
 
     let _listPopulated = open;
     function _populateFolderList() {
-        _sortSongs(folder.songs).forEach(function (s) {
-            list.appendChild(_view === 'grid' ? _songCard(s, folder.path) : _songRow(s, folder.path));
-        });
+        // Subfolders first (matches OS file browser convention), then direct songs
         (folder.children || []).forEach(function (child) {
             childrenWrap.appendChild(_folderSection(child, depth + 1));
+        });
+        _sortSongs(folder.songs).forEach(function (s) {
+            list.appendChild(_view === 'grid' ? _songCard(s, folder.path) : _songRow(s, folder.path));
         });
     }
     if (open) _populateFolderList();
 
-    content.appendChild(list);
     content.appendChild(childrenWrap);
+    content.appendChild(list);
 
     hdr.addEventListener('click', function () {
         if (_query) return;
