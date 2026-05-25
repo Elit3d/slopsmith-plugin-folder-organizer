@@ -191,7 +191,13 @@ This matches standard multi-select filter UX (similar to Spotify/library filters
 
 ### Data-driven filter panel
 
-`_getAvailableFilters()` scans `_tree` and returns `{ arrangements, stems, lyrics, tuning }` booleans. The filter panel calls this on open and only renders sections that have actual data in the current library. Add songs with stems and the stems section automatically reappears — no manual toggle needed.
+All filter sections are built from the actual library data — nothing is hardcoded:
+
+- `_getArrangements()` — scans every song and returns unique arrangement names sorted by frequency (most common first), then alphabetically. The filter panel builds pills from this list.
+- `_getStems()` — same pattern for stem names.
+- `_getAvailableFilters()` — returns `{ arrangements, stems, lyrics, tuning }` booleans used to gate the lyrics and tuning sections (arrangements and stems gate themselves via the length of `_getArrangements()` / `_getStems()`).
+
+If a song has a non-standard arrangement name (e.g. `"Bonus"`), it will appear as a pill in the filter panel automatically — no constants to update. The stems section only appears if at least one song in the library has stems data.
 
 ### Split pill UI
 

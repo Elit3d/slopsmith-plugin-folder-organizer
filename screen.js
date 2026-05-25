@@ -32,9 +32,31 @@ let _view        = _store('view') || 'list'; // 'list' | 'grid'
 let _sort        = _store('sort') || 'default'; // 'default' | 'title' | 'artist' | 'duration'
 let _sortDir     = _store('sortDir') || 'asc';  // 'asc' | 'desc'
 
-// ── Filter constants ──────────────────────────────────────────────────
-const _ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
-const _STEMS        = ['Drums', 'Bass', 'Vocals', 'Guitar', 'Piano', 'Other'];
+// ── Core arrangement order (pinned to top of filter panel) ───────────
+const _CORE_ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
+
+// ── Dynamic arrangement / stem discovery ──────────────────────────────
+function _getArrangements() {
+    if (!_tree) return [];
+    var counts = {};
+    _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    ).forEach(function (s) {
+        (s.arrangements || []).forEach(function (a) { counts[a] = (counts[a] || 0) + 1; });
+    });
+    return Object.keys(counts).sort(function (a, b) { return (counts[b] - counts[a]) || a.localeCompare(b); });
+}
+
+function _getStems() {
+    if (!_tree) return [];
+    var counts = {};
+    _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    ).forEach(function (s) {
+        (s.stems || []).forEach(function (st) { counts[st] = (counts[st] || 0) + 1; });
+    });
+    return Object.keys(counts).sort(function (a, b) { return (counts[b] - counts[a]) || a.localeCompare(b); });
+}
 
 // Returns which filter sections have actual data in the current library.
 // The filter panel uses this to show/hide sections automatically — no manual
@@ -394,7 +416,7 @@ function _updateFilterBadge() {
 }
 
 // ── Filter panel sections ─────────────────────────────────────────────
-function _makePillSection(sectionTitle, items, filterKey) {
+function _makePillSection(sectionTitle, items, filterKey, extraItems) {
     var section = document.createElement('div');
     section.style.marginBottom = '20px';
 
@@ -406,7 +428,7 @@ function _makePillSection(sectionTitle, items, filterKey) {
     var pills = document.createElement('div');
     pills.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px;';
 
-    items.forEach(function (item) {
+    function _addPill(item) {
         var state = ((_filters[filterKey] || {})[item]) || 'off';
         pills.appendChild(_makeSplitPill(item, state, function (next) {
             if (!_filters[filterKey]) _filters[filterKey] = {};
@@ -415,7 +437,16 @@ function _makePillSection(sectionTitle, items, filterKey) {
             _updateFilterBadge();
             _render();
         }));
-    });
+    }
+
+    items.forEach(_addPill);
+
+    if (extraItems && extraItems.length) {
+        var sep = document.createElement('div');
+        sep.style.cssText = 'width:100%; height:1px; background:#1f2937; margin:4px 0 2px;';
+        pills.appendChild(sep);
+        extraItems.forEach(_addPill);
+    }
 
     section.appendChild(pills);
     return section;
@@ -536,11 +567,21 @@ function _buildFilterPanel() {
     // scrollable content
     var content = document.createElement('div');
     content.style.cssText = 'overflow-y:auto; flex:1; padding:16px 20px;';
-    var avail = _getAvailableFilters();
-    if (avail.arrangements) content.appendChild(_makePillSection('ARRANGEMENTS', _ARRANGEMENTS, 'arrangements'));
-    if (avail.stems)        content.appendChild(_makePillSection('STEMS (sloppak)', _STEMS, 'stems'));
-    if (avail.lyrics)       content.appendChild(_makeLyricsSection());
-    if (avail.tuning)       content.appendChild(_makeTuningSection());
+    var arrangements = _getArrangements();
+    var stems        = _getStems();
+    var avail        = _getAvailableFilters();
+    if (arrangements.length) {
+        var coreArr  = _CORE_ARRANGEMENTS.filter(function (a) { return arrangements.indexOf(a) !== -1; });
+        var otherArr = arrangements.filter(function (a) { return _CORE_ARRANGEMENTS.indexOf(a) === -1; });
+        content.appendChild(_makePillSection('ARRANGEMENTS',
+            coreArr.length ? coreArr : arrangements,
+            'arrangements',
+            coreArr.length ? otherArr : []
+        ));
+    }
+    if (stems.length)  content.appendChild(_makePillSection('STEMS (sloppak)', stems, 'stems'));
+    if (avail.lyrics)  content.appendChild(_makeLyricsSection());
+    if (avail.tuning)  content.appendChild(_makeTuningSection());
     panel.appendChild(content);
 
     // footer
