@@ -29,6 +29,70 @@ let _unsortedOpen = _store('unsorted_open') !== 'false';
 let _query       = '';
 let _loaded      = false;
 let _view        = _store('view') || 'list'; // 'list' | 'grid'
+let _sort        = _store('sort') || 'default'; // 'default' | 'title' | 'artist' | 'duration'
+let _sortDir     = _store('sortDir') || 'asc';  // 'asc' | 'desc'
+
+// ── Core arrangement order (pinned to top of filter panel) ───────────
+const _CORE_ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
+
+// ── Dynamic arrangement / stem discovery ──────────────────────────────
+function _getArrangements() {
+    if (!_tree) return [];
+    var counts = {};
+    _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    ).forEach(function (s) {
+        (s.arrangements || []).forEach(function (a) { counts[a] = (counts[a] || 0) + 1; });
+    });
+    return Object.keys(counts).sort(function (a, b) { return (counts[b] - counts[a]) || a.localeCompare(b); });
+}
+
+function _getStems() {
+    if (!_tree) return [];
+    var counts = {};
+    _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    ).forEach(function (s) {
+        (s.stems || []).forEach(function (st) { counts[st] = (counts[st] || 0) + 1; });
+    });
+    return Object.keys(counts).sort(function (a, b) { return (counts[b] - counts[a]) || a.localeCompare(b); });
+}
+
+// Returns which filter sections have actual data in the current library.
+// The filter panel uses this to show/hide sections automatically — no manual
+// toggling needed. Add songs with stems and the stems section reappears on reload.
+function _getAvailableFilters() {
+    var out = { arrangements: false, stems: false, lyrics: false, tuning: false };
+    if (!_tree) return out;
+    var all = _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    );
+    all.forEach(function (s) {
+        if ((s.arrangements || []).length) out.arrangements = true;
+        if ((s.stems        || []).length) out.stems        = true;
+        if (s.lyrics)                      out.lyrics       = true;
+        if (s.tuning)                      out.tuning       = true;
+    });
+    return out;
+}
+
+var _filtersRaw = _storeJSON('filters') || {};
+function _normFilterGroup(g) {
+    var out = {};
+    for (var k in (g || {})) {
+        var v = g[k];
+        // normalise legacy values: 'require' → 'on', 'any' → 'off'
+        out[k] = v === 'require' ? 'on' : v === 'any' ? 'off' : v;
+    }
+    return out;
+}
+let _filters = {
+    arrangements: _normFilterGroup(_filtersRaw.arrangements),
+    stems:        _normFilterGroup(_filtersRaw.stems),
+    lyrics:       (_filtersRaw.lyrics === 'require' || _filtersRaw.lyrics === 'on') ? 'on'
+                : (_filtersRaw.lyrics === 'exclude') ? 'exclude' : 'off',
+    tunings:      _filtersRaw.tunings || [],
+};
 
 // ── DOM helpers ───────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
@@ -78,6 +142,9 @@ async function _load() {
         _loaded = true;
         _status('');
         _render();
+        // Rebuild filter panel if it's open so tuning list reflects new data
+        var fp = _el('fb-filter-panel');
+        if (fp && fp.style.display !== 'none') _buildFilterPanel();
     } catch (err) {
         _status('Load failed: ' + err.message, true);
     }
@@ -97,11 +164,495 @@ function _match(song) {
 
 function _filtered() {
     if (!_tree) return { folders: [], root_songs: [] };
-    if (!_query) return _tree;
+    const hasQuery   = !!_query;
+    const hasFilters = _activeFilterCount() > 0;
+    if (!hasQuery && !hasFilters) return _tree;
+    function _keep(s) {
+        return (!hasQuery || _match(s)) && (!hasFilters || _matchFilters(s));
+    }
     const folders = _tree.folders
-        .map(f => ({ name: f.name, songs: f.songs.filter(_match) }))
-        .filter(f => f.songs.length);
-    return { folders, root_songs: _tree.root_songs.filter(_match) };
+        .map(function (f) { return { name: f.name, songs: f.songs.filter(_keep) }; })
+        .filter(function (f) { return f.songs.length; });
+    return { folders: folders, root_songs: _tree.root_songs.filter(_keep) };
+}
+
+// ── Filter helpers ────────────────────────────────────────────────────
+function _saveFilters() {
+    _storeJSON('filters', _filters);
+}
+
+function _activeFilterCount() {
+    var n = 0;
+    var arrVals = _filters.arrangements || {};
+    for (var a in arrVals) { if (arrVals[a] === 'on' || arrVals[a] === 'exclude') n++; }
+    var stemVals = _filters.stems || {};
+    for (var s in stemVals) { if (stemVals[s] === 'on' || stemVals[s] === 'exclude') n++; }
+    if (_filters.lyrics === 'on' || _filters.lyrics === 'exclude') n++;
+    n += (_filters.tunings || []).length;
+    return n;
+}
+
+function _matchFilters(song) {
+    // Arrangements — include uses OR (song needs at least one selected),
+    //                exclude uses AND (each excluded tag independently removes)
+    var arrF    = _filters.arrangements || {};
+    var songArr = song.arrangements || [];
+    var onArr   = Object.keys(arrF).filter(function (a) { return arrF[a] === 'on'; });
+    if (onArr.length && !onArr.some(function (a) { return songArr.indexOf(a) !== -1; })) return false;
+    for (var a in arrF) {
+        if (arrF[a] === 'exclude' && songArr.indexOf(a) !== -1) return false;
+    }
+
+    // Stems — same OR-include / AND-exclude logic
+    var stemsF    = _filters.stems || {};
+    var songStems = song.stems || [];
+    var onStems   = Object.keys(stemsF).filter(function (s) { return stemsF[s] === 'on'; });
+    if (onStems.length && !onStems.some(function (s) { return songStems.indexOf(s) !== -1; })) return false;
+    for (var s in stemsF) {
+        if (stemsF[s] === 'exclude' && songStems.indexOf(s) !== -1) return false;
+    }
+
+    if (_filters.lyrics === 'on'      && !song.lyrics) return false;
+    if (_filters.lyrics === 'exclude' &&  song.lyrics) return false;
+    var tunings = _filters.tunings || [];
+    if (tunings.length) {
+        var t = (song.tuning || '').trim();
+        if (!t || tunings.indexOf(t) === -1) return false;
+    }
+    return true;
+}
+
+function _getTunings() {
+    if (!_tree) return [];
+    var counts = {};
+    var allSongs = _tree.root_songs.concat(
+        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
+    );
+    allSongs.forEach(function (s) {
+        var t = s.tuning ? String(s.tuning).trim() : '';
+        if (t) counts[t] = (counts[t] || 0) + 1;
+    });
+    return Object.keys(counts)
+        .sort(function (a, b) { return a.localeCompare(b); }) // alphabetical
+        .map(function (t) { return { tuning: t, count: counts[t] }; });
+}
+
+// Split pill: left zone = include, right zone = exclude
+// state: 'off' | 'on' | 'exclude'
+function _makeSplitPill(label, state, onChange) {
+    var pill = document.createElement('div');
+    pill.style.cssText = 'display:inline-flex; border-radius:20px; border:1px solid; overflow:hidden;';
+
+    var incBtn = document.createElement('button');
+    incBtn.style.cssText = 'padding:4px 10px; background:none; border:none; border-right:1px solid; font-size:12px; cursor:pointer; white-space:nowrap;';
+    incBtn.textContent = label;
+
+    var excBtn = document.createElement('button');
+    excBtn.style.cssText = 'padding:4px 8px; background:none; border:none; font-size:11px; cursor:pointer; line-height:1;';
+    excBtn.title = 'Exclude';
+    excBtn.textContent = '✕';
+
+    function _apply() {
+        if (state === 'on') {
+            pill.style.borderColor   = '#2563eb';
+            incBtn.style.background  = '#1d4ed8';
+            incBtn.style.color       = '#fff';
+            incBtn.style.borderRightColor = '#3b82f6';
+            excBtn.style.background  = '#1d4ed8';
+            excBtn.style.color       = 'rgba(255,255,255,0.45)';
+        } else if (state === 'exclude') {
+            pill.style.borderColor   = '#991b1b';
+            incBtn.style.background  = 'transparent';
+            incBtn.style.color       = '#fca5a5';
+            incBtn.style.borderRightColor = '#7f1d1d';
+            excBtn.style.background  = 'transparent';
+            excBtn.style.color       = '#ef4444';
+        } else {
+            pill.style.borderColor   = '#374151';
+            incBtn.style.background  = 'transparent';
+            incBtn.style.color       = '#6b7280';
+            incBtn.style.borderRightColor = '#374151';
+            excBtn.style.background  = 'transparent';
+            excBtn.style.color       = '#4b5563';
+        }
+    }
+    _apply();
+
+    incBtn.addEventListener('click', function () {
+        state = (state === 'on') ? 'off' : 'on';
+        _apply();
+        onChange(state);
+    });
+    excBtn.addEventListener('click', function () {
+        state = (state === 'exclude') ? 'off' : 'exclude';
+        _apply();
+        onChange(state);
+    });
+
+    pill.appendChild(incBtn);
+    pill.appendChild(excBtn);
+    return pill;
+}
+
+// ── Song date info (year + date added) — separate hover reveal ────────
+function _buildSongDateInfo(song) {
+    var parts = [];
+    if (song.year != null && song.year !== '') parts.push(String(song.year));
+    if (song.added) {
+        var d = new Date(song.added * 1000);
+        parts.push(d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
+    }
+    if (!parts.length) return null;
+    var el = document.createElement('div');
+    el.style.cssText = 'font-size:11px; font-weight:500; color:#cbd5e1; ' +
+        'max-height:0; opacity:0; overflow:hidden; margin-top:0; ' +
+        'transition:max-height 0.2s ease, opacity 0.15s, margin-top 0.15s;';
+    el.textContent = parts.join('  ·  ');
+    return el;
+}
+
+// ── Song metadata badges (visible when filters are active) ────────────
+function _badge(text, active, type) {
+    var b = document.createElement('span');
+    // inactive colour per badge category
+    var _typeColors = {
+        arrangement: { border: '#92400e', color: '#fcd34d' }, // amber
+        stem:        { border: '#5b21b6', color: '#c4b5fd' }, // violet
+        lyrics:      { border: '#9f1239', color: '#fda4af' }, // rose
+        tuning:      { border: '#0f766e', color: '#5eead4' }, // teal
+    };
+    var tc = (!active && type) ? (_typeColors[type] || null) : null;
+    b.style.cssText = 'display:inline-block; padding:1px 6px; border-radius:3px; ' +
+        'font-size:10px; font-weight:500; white-space:nowrap; cursor:pointer; ' +
+        'border:1px solid ' + (active ? '#3b82f6' : (tc ? tc.border : '#334155')) + '; ' +
+        'background:' + (active ? '#1d4ed8' : 'transparent') + '; ' +
+        'color:'      + (active ? '#fff'    : (tc ? tc.color : '#cbd5e1')) + ';';
+    b.textContent = text;
+    return b;
+}
+
+function _buildSongBadges(song) {
+    var wrap = document.createElement('div');
+    // hidden by default — revealed on hover by the caller
+    wrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:3px; ' +
+        'max-height:0; opacity:0; overflow:hidden; margin-top:0; ' +
+        'transition:max-height 0.2s ease, opacity 0.15s, margin-top 0.15s;';
+    var any = false;
+    var _seenArr  = {};
+    var _seenStem = {};
+
+    (song.arrangements || []).forEach(function (a) {
+        if (_seenArr[a]) return; _seenArr[a] = true;
+        var active = ((_filters.arrangements || {})[a] === 'on');
+        var b = _badge(a, active, 'arrangement');
+        b.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (!_filters.arrangements) _filters.arrangements = {};
+            _filters.arrangements[a] = active ? 'off' : 'on';
+            _saveFilters(); _updateFilterBadge(); _render();
+        });
+        wrap.appendChild(b); any = true;
+    });
+
+    (song.stems || []).forEach(function (s) {
+        if (_seenStem[s]) return; _seenStem[s] = true;
+        var active = ((_filters.stems || {})[s] === 'on');
+        var b = _badge(s, active, 'stem');
+        b.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (!_filters.stems) _filters.stems = {};
+            _filters.stems[s] = active ? 'off' : 'on';
+            _saveFilters(); _updateFilterBadge(); _render();
+        });
+        wrap.appendChild(b); any = true;
+    });
+
+    if (song.lyrics) {
+        var lyrActive = (_filters.lyrics === 'on');
+        var lb = _badge('♪ Lyrics', lyrActive, 'lyrics');
+        lb.addEventListener('click', function (e) {
+            e.stopPropagation();
+            _filters.lyrics = lyrActive ? 'off' : 'on';
+            _saveFilters(); _updateFilterBadge(); _render();
+        });
+        wrap.appendChild(lb); any = true;
+    }
+
+    if (song.tuning) {
+        var t = song.tuning.trim();
+        var tunActive = (_filters.tunings || []).indexOf(t) !== -1;
+        var tb = _badge(t, tunActive, 'tuning');
+        tb.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (!_filters.tunings) _filters.tunings = [];
+            var idx = _filters.tunings.indexOf(t);
+            if (idx !== -1) _filters.tunings.splice(idx, 1);
+            else            _filters.tunings.push(t);
+            _saveFilters(); _updateFilterBadge(); _render();
+        });
+        wrap.appendChild(tb); any = true;
+    }
+
+    return any ? wrap : null;
+}
+
+function _revealBadges(el) {
+    el.style.maxHeight  = '120px';
+    el.style.opacity    = '1';
+    el.style.marginTop  = '4px';
+}
+function _hideBadges(el) {
+    el.style.maxHeight  = '0';
+    el.style.opacity    = '0';
+    el.style.marginTop  = '0';
+}
+
+function _updateFilterBadge() {
+    var badge = _el('fb-filter-badge');
+    if (!badge) return;
+    var n = _activeFilterCount();
+    badge.style.display = n ? 'block' : 'none';
+    badge.textContent   = String(n);
+}
+
+// ── Filter panel sections ─────────────────────────────────────────────
+function _makePillSection(sectionTitle, items, filterKey, extraItems) {
+    var section = document.createElement('div');
+    section.style.marginBottom = '20px';
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; margin-bottom:8px;';
+    hdr.textContent = sectionTitle;
+    section.appendChild(hdr);
+
+    var pills = document.createElement('div');
+    pills.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px;';
+
+    function _addPill(item) {
+        var state = ((_filters[filterKey] || {})[item]) || 'off';
+        pills.appendChild(_makeSplitPill(item, state, function (next) {
+            if (!_filters[filterKey]) _filters[filterKey] = {};
+            _filters[filterKey][item] = next;
+            _saveFilters();
+            _updateFilterBadge();
+            _render();
+        }));
+    }
+
+    items.forEach(_addPill);
+
+    if (extraItems && extraItems.length) {
+        var sep = document.createElement('div');
+        sep.style.cssText = 'width:100%; height:1px; background:#1f2937; margin:4px 0 2px;';
+        pills.appendChild(sep);
+        extraItems.forEach(_addPill);
+    }
+
+    section.appendChild(pills);
+    return section;
+}
+
+function _makeLyricsSection() {
+    var section = document.createElement('div');
+    section.style.marginBottom = '20px';
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; margin-bottom:8px;';
+    hdr.textContent = 'LYRICS';
+    section.appendChild(hdr);
+
+    var state = _filters.lyrics || 'off';
+    section.appendChild(_makeSplitPill('Lyrics', state, function (next) {
+        _filters.lyrics = next;
+        _saveFilters();
+        _updateFilterBadge();
+        _render();
+    }));
+    return section;
+}
+
+function _makeTuningSection() {
+    var section = document.createElement('div');
+    section.style.marginBottom = '20px';
+
+    var tunings = _getTunings();
+    if (!tunings.length) return section;
+
+    // header row with "N selected / All tunings" label
+    var titleRow = document.createElement('div');
+    titleRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;';
+
+    var titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#6b7280;';
+    titleEl.textContent = 'TUNING';
+
+    var allLbl = document.createElement('span');
+    allLbl.style.cssText = 'font-size:11px; color:#6b7280;';
+    function _updateAllLbl() {
+        var n = (_filters.tunings || []).length;
+        allLbl.textContent = n ? n + ' selected' : 'All tunings';
+    }
+    _updateAllLbl();
+
+    titleRow.appendChild(titleEl);
+    titleRow.appendChild(allLbl);
+    section.appendChild(titleRow);
+
+    var list = document.createElement('div');
+    list.style.cssText = 'display:flex; flex-direction:column; gap:2px;';
+
+    tunings.forEach(function (entry) {
+        var row = document.createElement('label');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:5px 4px; cursor:pointer; border-radius:4px;';
+        row.addEventListener('mouseenter', function () { row.style.background = '#111827'; });
+        row.addEventListener('mouseleave', function () { row.style.background = ''; });
+
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'width:14px; height:14px; accent-color:#3b82f6; cursor:pointer; flex-shrink:0;';
+        cb.checked = (_filters.tunings || []).indexOf(entry.tuning) !== -1;
+
+        var lbl = document.createElement('span');
+        lbl.style.cssText = 'flex:1; font-size:13px; color:#d1d5db;';
+        lbl.textContent = entry.tuning;
+
+        var cnt = document.createElement('span');
+        cnt.style.cssText = 'font-size:12px; color:#6b7280; font-variant-numeric:tabular-nums;';
+        cnt.textContent = entry.count;
+
+        cb.addEventListener('change', function () {
+            if (!_filters.tunings) _filters.tunings = [];
+            if (cb.checked) {
+                if (_filters.tunings.indexOf(entry.tuning) === -1)
+                    _filters.tunings.push(entry.tuning);
+            } else {
+                _filters.tunings = _filters.tunings.filter(function (t) { return t !== entry.tuning; });
+            }
+            _saveFilters();
+            _updateAllLbl();
+            _updateFilterBadge();
+            _render();
+        });
+
+        row.appendChild(cb);
+        row.appendChild(lbl);
+        row.appendChild(cnt);
+        list.appendChild(row);
+    });
+
+    section.appendChild(list);
+    return section;
+}
+
+// ── Filter panel open / close ─────────────────────────────────────────
+function _buildFilterPanel() {
+    var panel = _el('fb-filter-panel');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    // header
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #1f2937; flex-shrink:0;';
+    var titleEl = document.createElement('span');
+    titleEl.style.cssText = 'font-size:15px; font-weight:600; color:#e5e7eb;';
+    titleEl.textContent = 'Filters';
+    var closeBtn = document.createElement('button');
+    closeBtn.style.cssText = 'padding:4px; color:#6b7280; background:none; border:none; cursor:pointer; border-radius:4px;';
+    closeBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>';
+    closeBtn.addEventListener('click', _closeFilterPanel);
+    hdr.appendChild(titleEl);
+    hdr.appendChild(closeBtn);
+    panel.appendChild(hdr);
+
+    // scrollable content
+    var content = document.createElement('div');
+    content.style.cssText = 'overflow-y:auto; flex:1; padding:16px 20px;';
+    var arrangements = _getArrangements();
+    var stems        = _getStems();
+    var avail        = _getAvailableFilters();
+    if (arrangements.length) {
+        var coreArr  = _CORE_ARRANGEMENTS.filter(function (a) { return arrangements.indexOf(a) !== -1; });
+        var otherArr = arrangements.filter(function (a) { return _CORE_ARRANGEMENTS.indexOf(a) === -1; });
+        content.appendChild(_makePillSection('ARRANGEMENTS',
+            coreArr.length ? coreArr : arrangements,
+            'arrangements',
+            coreArr.length ? otherArr : []
+        ));
+    }
+    if (stems.length)  content.appendChild(_makePillSection('STEMS (sloppak)', stems, 'stems'));
+    if (avail.lyrics)  content.appendChild(_makeLyricsSection());
+    if (avail.tuning)  content.appendChild(_makeTuningSection());
+    panel.appendChild(content);
+
+    // footer
+    var footer = document.createElement('div');
+    footer.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-top:1px solid #1f2937; flex-shrink:0;';
+    var clearBtn = document.createElement('button');
+    clearBtn.style.cssText = 'font-size:13px; color:#6b7280; background:none; border:none; cursor:pointer; padding:0;';
+    clearBtn.textContent = 'Clear all';
+    clearBtn.addEventListener('click', function () {
+        _filters = { arrangements: {}, stems: {}, lyrics: 'off', tunings: [] };
+
+        _saveFilters();
+        _updateFilterBadge();
+        _render();
+        _buildFilterPanel(); // reset pill states
+    });
+    var doneBtn = document.createElement('button');
+    doneBtn.style.cssText = 'padding:6px 20px; border-radius:6px; border:none; background:#3b82f6; color:#fff; font-size:13px; cursor:pointer; font-weight:500;';
+    doneBtn.textContent = 'Done';
+    doneBtn.addEventListener('click', _closeFilterPanel);
+    footer.appendChild(clearBtn);
+    footer.appendChild(doneBtn);
+    panel.appendChild(footer);
+}
+
+function _openFilterPanel() {
+    _buildFilterPanel();
+    var panel    = _el('fb-filter-panel');
+    var backdrop = _el('fb-filter-backdrop');
+    if (panel)    panel.style.display    = 'flex';
+    if (backdrop) backdrop.style.display = 'block';
+}
+
+function _closeFilterPanel() {
+    var panel    = _el('fb-filter-panel');
+    var backdrop = _el('fb-filter-backdrop');
+    if (panel)    panel.style.display    = 'none';
+    if (backdrop) backdrop.style.display = 'none';
+}
+
+// ── Sort helper ───────────────────────────────────────────────────────
+function _sortSongs(songs) {
+    if (_sort === 'default') return songs;
+    var arr = songs.slice();
+    if (_sort === 'title') {
+        arr.sort(function (a, b) {
+            return (a.title || a.filename).localeCompare(b.title || b.filename);
+        });
+    } else if (_sort === 'artist') {
+        arr.sort(function (a, b) {
+            return (a.artist || '').localeCompare(b.artist || '');
+        });
+    } else if (_sort === 'duration') {
+        arr.sort(function (a, b) {
+            return (a.duration || 0) - (b.duration || 0);
+        });
+    } else if (_sort === 'year') {
+        arr.sort(function (a, b) {
+            return (a.year || 0) - (b.year || 0);
+        });
+    } else if (_sort === 'tuning') {
+        arr.sort(function (a, b) {
+            return (a.tuning || '').localeCompare(b.tuning || '');
+        });
+    } else if (_sort === 'added') {
+        arr.sort(function (a, b) {
+            return (a.added || 0) - (b.added || 0);
+        });
+    }
+    if (_sortDir === 'desc') arr.reverse();
+    return arr;
 }
 
 // ── Custom modal (Electron blocks prompt/confirm) ─────────────────────
@@ -205,6 +756,19 @@ function _songCard(song, folderName) {
     sub.style.cssText = 'font-size:11px; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;';
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
 
+    var cardBadges = _buildSongBadges(song);
+    if (cardBadges) {
+        meta.appendChild(cardBadges);
+        card.addEventListener('mouseenter', function () { _revealBadges(cardBadges); });
+        card.addEventListener('mouseleave', function () { _hideBadges(cardBadges); });
+    }
+    var cardDateInfo = _buildSongDateInfo(song);
+    if (cardDateInfo) {
+        meta.appendChild(cardDateInfo);
+        card.addEventListener('mouseenter', function () { _revealBadges(cardDateInfo); });
+        card.addEventListener('mouseleave', function () { _hideBadges(cardDateInfo); });
+    }
+
     // move button
     const moveBtn = document.createElement('button');
     moveBtn.style.cssText = 'position:absolute; top:6px; right:6px; padding:4px; border-radius:4px; background:rgba(0,0,0,0.6); color:#9ca3af; border:none; cursor:pointer; display:none;';
@@ -280,6 +844,18 @@ function _songRow(song, folderName) {
     sub.textContent = [song.artist, song.album].filter(Boolean).join(' — ') || '';
     meta.appendChild(title);
     meta.appendChild(sub);
+    var rowBadges = _buildSongBadges(song);
+    if (rowBadges) {
+        meta.appendChild(rowBadges);
+        row.addEventListener('mouseenter', function () { _revealBadges(rowBadges); });
+        row.addEventListener('mouseleave', function () { _hideBadges(rowBadges); });
+    }
+    var rowDateInfo = _buildSongDateInfo(song);
+    if (rowDateInfo) {
+        meta.appendChild(rowDateInfo);
+        row.addEventListener('mouseenter', function () { _revealBadges(rowDateInfo); });
+        row.addEventListener('mouseleave', function () { _hideBadges(rowDateInfo); });
+    }
 
     // play icon (right side)
     const icon = document.createElement('span');
@@ -605,7 +1181,7 @@ function _folderSection(folder) {
     }
     let _listPopulated = open;
     function _populateFolderList() {
-        folder.songs.forEach(function (s) {
+        _sortSongs(folder.songs).forEach(function (s) {
             list.appendChild(_view === 'grid' ? _songCard(s, folder.name) : _songRow(s, folder.name));
         });
     }
@@ -676,7 +1252,7 @@ function _unsortedSection(songs) {
     }
     let _unsortedPopulated = _unsortedOpen;
     function _populateUnsortedList() {
-        songs.forEach(function (s) {
+        _sortSongs(songs).forEach(function (s) {
             list.appendChild(_view === 'grid' ? _songCard(s, '') : _songRow(s, ''));
         });
     }
@@ -801,6 +1377,8 @@ function _init() {
     const expandAll   = _el('fb-expand-all');
     const collapseAll = _el('fb-collapse-all');
     const newFolder   = _el('fb-new-folder');
+    const filterBtn   = _el('fb-filter');
+    const filterBack  = _el('fb-filter-backdrop');
     const viewList    = _el('fb-view-list');
     const viewGrid    = _el('fb-view-grid');
     const treeEl      = _el('fb-tree');
@@ -835,6 +1413,46 @@ function _init() {
         _render();
     });
 
+    const sortSel    = _el('fb-sort');
+    const sortDirBtn = _el('fb-sort-dir');
+    const sortDirIco = _el('fb-sort-dir-icon');
+
+    function _updateSortDir() {
+        if (!sortDirBtn) return;
+        var isAsc = _sortDir === 'asc';
+        var active = _sort !== 'default';
+        sortDirBtn.title = isAsc ? 'Ascending' : 'Descending';
+        sortDirBtn.style.opacity = active ? '' : '0.35';
+        sortDirBtn.style.cursor  = active ? '' : 'default';
+        if (sortDirIco) {
+            // up chevron for asc, down chevron for desc
+            sortDirIco.innerHTML = isAsc
+                ? '<path d="M5 12l5-5 5 5"/>'
+                : '<path d="M5 8l5 5 5-5"/>';
+        }
+    }
+    _updateSortDir();
+
+    if (sortSel) {
+        sortSel.value = _sort;
+        sortSel.addEventListener('change', function () {
+            _sort = sortSel.value;
+            _store('sort', _sort);
+            _updateSortDir();
+            _render();
+        });
+    }
+
+    if (sortDirBtn) {
+        sortDirBtn.addEventListener('click', function () {
+            if (_sort === 'default') return;
+            _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+            _store('sortDir', _sortDir);
+            _updateSortDir();
+            _render();
+        });
+    }
+
     search.addEventListener('input', function (e) {
         _query = e.target.value.trim();
         _render();
@@ -848,6 +1466,9 @@ function _init() {
     expandAll.addEventListener('click', _expandAll);
     collapseAll.addEventListener('click', _collapseAll);
     newFolder.addEventListener('click', _createFolder);
+    if (filterBtn)  filterBtn.addEventListener('click', _openFilterPanel);
+    if (filterBack) filterBack.addEventListener('click', _closeFilterPanel);
+    _updateFilterBadge();
 
     if (!_loaded) _load();
 }

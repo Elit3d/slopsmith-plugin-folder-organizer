@@ -78,6 +78,7 @@ A mismatch in any of these causes silent failures (blank screen, 404 API calls).
 - **Safe storage access** — all `localStorage` reads/writes wrapped in try/catch
 - **Logging** — backend uses `context["log"]`, never `print()`
 - **Sibling imports** — use `context["load_sibling"]("name")` not bare `import name`
+- **Keyboard shortcut** — `/` focuses the search box, registered via `window.registerShortcut()` with `scope: 'plugin-' + PLUGIN_ID`
 
 ## Backend Routes
 
@@ -98,11 +99,34 @@ Each song object returned by `/tree`:
   "title": "Title",
   "artist": "Artist",
   "album": "Album Name",
-  "duration": 213.5
+  "duration": 213.5,
+  "year": 1993,
+  "tuning": "E Standard",
+  "added": 1748132400.0,
+  "arrangements": ["Lead", "Rhythm", "Bass"],
+  "stems": ["Drums", "Bass", "Vocals"],
+  "lyrics": true
 }
 ```
 
 `filename` is the full relative path from the DLC root — pass it directly to `window.playSong()`.
+
+`added` is a Unix timestamp (float, seconds) from `stat().st_mtime` — convert with `new Date(added * 1000)`.
+
+### extract_meta returns arrangements/stems as objects, not strings
+
+`context["extract_meta"]()` returns arrangements as a list of objects `{index, name, notes}`, not plain strings. The backend extracts `.name` from each:
+
+```python
+raw_arr = raw.get("arrangements") or []
+m["arrangements"] = [
+    a["name"] if isinstance(a, dict) else str(a)
+    for a in raw_arr
+    if (isinstance(a, dict) and "name" in a) or isinstance(a, str)
+]
+```
+
+The same pattern applies to stems. If you add new metadata fields that come from `extract_meta`, check the raw shape before assuming it's a plain value.
 
 ## Folder Scan Logic
 
@@ -120,18 +144,135 @@ The toolbar has a list/grid toggle. Current view is stored in `localStorage` und
 - **List view** — uses `_songRow()`, renders inside a `ml-5 space-y-0` div
 - **Grid view** — uses `_songCard()`, renders inside a CSS grid div (`auto-fill, minmax(150px,1fr)`)
 - Both `_folderSection()` and `_unsortedSection()` branch on `_view` to pick the right renderer and container
-- Album art is fetched via `/api/art/<encoded-filename>`. On error the `<img>` is hidden and a placeholder SVG is shown instead
+- Album art is fetched via `/api/song/<encoded-path>/art` where each path segment is individually `encodeURIComponent`-encoded. On error the `<img>` is hidden and a placeholder SVG is shown instead
 - The collapse/expand toggle correctly restores `display:grid` (not just `display:''`) when reopening a folder in grid mode — always check this when changing the toggle logic
+
+### Lazy folder rendering
+
+Folders do **not** render their song list on initial load. `_folderSection()` sets a `_listPopulated` flag and only calls `_populateFolderList()` the first time a folder is opened. This keeps the initial render fast with large libraries. When search is active all folders are forced open and populated immediately (search overrides lazy loading).
 
 ### 10. Use inline styles for grid layout, not Tailwind
 Tailwind's `grid` and `grid-cols-*` classes may not apply reliably inside the plugin div. Use `element.style.cssText` with explicit `display:grid; grid-template-columns:...` for the grid container.
 
-## Extending This Plugin
+## Sort System
 
-**Add sorting within folders** — songs are sorted by filename. To sort by title, call `sorted(kids, key=lambda s: s["title"] or "")` after building the kids list.
+The toolbar has a sort select (`#fb-sort`) and a direction toggle (`#fb-sort-dir`). State is stored in `localStorage` under `fo:sort` and `fo:sortDir`.
 
-**Add album art thumbnails** — hit `/api/art/<filename>` and set as an `<img>` in `_songCard()`. Already implemented in grid view.
+- `_sort` — `'default' | 'title' | 'artist' | 'duration' | 'year' | 'tuning' | 'added'`
+- `_sortDir` — `'asc' | 'desc'`
+- `_sortSongs(songs)` — returns a sorted copy; direction is applied by reversing after sort. Returns the array unchanged when `_sort === 'default'`.
+- The sort direction button is dimmed (`opacity: 0.35`) and non-interactive when sort is `'default'`.
 
-**Add nested subfolders** — currently one level deep. Make `get_tree()` recursive and update `_folderSection()` to render children.
+## Filter System
 
-**Add drag-and-drop** — add `draggable="true"` to song rows and folder headers, then call `/song/move` on drop.
+Filters are stored in `localStorage` under `fo:filters` as a JSON object.
+
+### Filter state shape
+
+```js
+_filters = {
+    arrangements: { Lead: 'on', Bass: 'exclude', Rhythm: 'off' },
+    stems:        { Drums: 'off' },
+    lyrics:       'off',   // 'off' | 'on' | 'exclude'
+    tunings:      ['E Standard', 'Eb Standard'],
+}
+```
+
+Each arrangement/stem value is `'off' | 'on' | 'exclude'`.
+
+### Include vs exclude logic
+
+`_matchFilters(song)` uses **OR logic for includes, AND logic for excludes**:
+
+- **Include (`'on'`)** — song passes if it has *at least one* of the selected arrangements/stems. Selecting more includes widens the result set.
+- **Exclude (`'exclude'`)** — each excluded tag independently removes songs that have it. Selecting more excludes narrows the result set.
+
+This matches standard multi-select filter UX (similar to Spotify/library filters).
+
+### Data-driven filter panel
+
+All filter sections are built from the actual library data — nothing is hardcoded:
+
+- `_getArrangements()` — scans every song and returns unique arrangement names sorted by frequency (most common first), then alphabetically. The filter panel builds pills from this list.
+- `_getStems()` — same pattern for stem names.
+- `_getAvailableFilters()` — returns `{ arrangements, stems, lyrics, tuning }` booleans used to gate the lyrics and tuning sections (arrangements and stems gate themselves via the length of `_getArrangements()` / `_getStems()`).
+
+If a song has a non-standard arrangement name (e.g. `"Bonus"`), it will appear as a pill in the filter panel automatically — no constants to update. The stems section only appears if at least one song in the library has stems data.
+
+### Split pill UI
+
+`_makeSplitPill(label, state, onChange)` renders a two-zone pill:
+- Left zone (label) — click to toggle `'off' ↔ 'on'` (include, turns blue)
+- Right zone (`✕`) — click to toggle `'off' ↔ 'exclude'` (exclude, turns red)
+
+The filter badge on the toolbar (`#fb-filter-badge`) shows the active filter count via `_activeFilterCount()`.
+
+## Hover Badges
+
+Each song row/card has two hidden hover-reveal layers, built once and toggled via CSS `max-height` + `opacity` transitions.
+
+### `_badge(text, active, type)`
+
+Renders a single metadata badge. Type controls the inactive colour:
+
+| type | inactive border | inactive text |
+|---|---|---|
+| `'arrangement'` | amber `#92400e` | amber `#fcd34d` |
+| `'stem'` | violet `#5b21b6` | violet `#c4b5fd` |
+| `'lyrics'` | rose `#9f1239` | rose `#fda4af` |
+| `'tuning'` | teal `#0f766e` | teal `#5eead4` |
+
+Active state is always blue (`#1d4ed8` fill, `#3b82f6` border, white text) regardless of type.
+
+### `_buildSongBadges(song)`
+
+Builds the badge row (arrangements, stems, lyrics, tuning). Deduplicates within each category — if a song's raw data has the same arrangement name twice, only one badge is shown. Clicking a badge toggles that filter on/off and re-renders.
+
+Returns `null` if the song has no filterable metadata.
+
+### `_buildSongDateInfo(song)`
+
+Builds a separate plain-text hover line showing `year · date added` (e.g. `1993  ·  24 May 2026`). Uses `#cbd5e1` text. Always shown on hover regardless of filter state — not connected to the filter system.
+
+### Reveal / hide
+
+```js
+_revealBadges(el)  // max-height:120px, opacity:1, margin-top:4px
+_hideBadges(el)    // max-height:0, opacity:0, margin-top:0
+```
+
+Both badge layers (`rowBadges` / `cardBadges` and `rowDateInfo` / `cardDateInfo`) are wired to the same `mouseenter`/`mouseleave` events on the row or card element.
+
+## Drag-and-Drop
+
+Drag-and-drop uses **pointer events** (mousedown/mousemove/mouseup), not the HTML5 DnD API. HTML5 DnD blocks wheel events and gives unreliable edge positions inside Electron — pointer events give full control.
+
+- `_makeDraggable(el, song, folderName)` — attaches a `mousedown` listener. A drag only becomes "live" after the pointer moves more than `_DRAG_THRESH` (5 px), preventing accidental drags on clicks.
+- Once live, a ghost `div` is created and follows the cursor. Auto-scroll activates when the pointer is within `_DRAG_ZONE` (150 px) of the viewport top or bottom.
+- `_makeDropTarget(el, targetFolder)` — sets `data-dropFolder` on an element so it can receive drops. Both folder headers and song list containers are drop targets.
+- `_dragFindTarget(x, y)` — uses `document.elementsFromPoint` to find the topmost element with `data-dropFolder` under the cursor.
+- **Esc to cancel** — `_onDragKeyDown` calls `_endPointerDrag()` on `Escape`, removing the ghost and clearing state without executing a drop.
+- On successful drop, `_executeDrop()` does an **optimistic UI update** (moves the song in `_tree` immediately and re-renders) then calls `/song/move`. If the API call fails it reloads the full tree.
+- A one-time `click` capture listener is added after mouseup to suppress the click event that fires after a drag, preventing accidental song playback.
+
+## Modal Behaviour
+
+`_showModal(msg, withInput, defaultVal)` is the custom modal used for all prompts and confirms (Electron blocks `window.prompt()` and `window.confirm()`). It returns a Promise.
+
+- `_confirm(msg)` — resolves `true` on OK, `null` on cancel
+- `_prompt(msg, default)` — resolves the trimmed input string on OK, `null` on cancel
+- **Esc cancels** — a `keydown` listener inside the modal resolves with `null` on `Escape`, same as clicking Cancel. This applies to all modal uses: rename, delete, create folder, and move song.
+- **Enter confirms** — same listener submits on `Enter` (equivalent to clicking OK).
+
+## Planned Features (Roadmap)
+
+Features not yet implemented, in rough priority order:
+
+- **Nested subfolders** — currently one level deep. Make `get_tree()` recursive and update `_folderSection()` to render children.
+- **Auto-play on hover** — with an on/off toggle preference saved to localStorage.
+- **Bulk move** — multi-select songs and move them all at once.
+- **Thumbnail performance** — faster loading and smoother scrolling with large libraries.
+- **Adjustable thumbnail/row sizes** — user-resizable song cards and list rows.
+- **Custom themes** — switchable colour schemes.
+- **Favoriting songs** — mark songs as favourites; likely needs a new backend route and a `fo:favorites` localStorage key.
+- **Editing song metadata** — edit title, artist, album etc. in-plugin; needs new backend write routes.

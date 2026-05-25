@@ -47,7 +47,14 @@ def setup(app, context):
         except ValueError:
             filename = p.name
         m = {"filename": filename, "title": None, "artist": None,
-             "album": None, "duration": None}
+             "album": None, "duration": None, "year": None,
+             "tuning": None, "added": None,
+             "arrangements": [], "stems": [], "lyrics": False}
+        try:
+            stat = p.stat()
+            m["added"] = stat.st_mtime
+        except Exception:
+            pass
         try:
             raw = context["extract_meta"](p)
             if raw:
@@ -55,6 +62,41 @@ def setup(app, context):
                 m["artist"]   = raw.get("artist")   or raw.get("artistName")
                 m["album"]    = raw.get("album")     or raw.get("albumName")
                 m["duration"] = raw.get("duration")
+                m["year"]     = raw.get("year")
+                m["tuning"]   = raw.get("tuning")
+
+                # arrangements — objects with a "name" key e.g. [{name:"Lead",...}, ...]
+                raw_arr = raw.get("arrangements") or []
+                if isinstance(raw_arr, (list, tuple)):
+                    m["arrangements"] = [
+                        a["name"] if isinstance(a, dict) else str(a)
+                        for a in raw_arr
+                        if (isinstance(a, dict) and "name" in a) or isinstance(a, str)
+                    ]
+
+                # stems — may also be objects with a "name" key, same as arrangements
+                raw_stems = raw.get("stems") or []
+                for _key in ("stems", "stem_types", "available_stems", "stemTypes"):
+                    _v = raw.get(_key)
+                    if _v:
+                        raw_stems = _v
+                        break
+                if isinstance(raw_stems, (list, tuple)):
+                    m["stems"] = [
+                        a["name"] if isinstance(a, dict) else str(a)
+                        for a in raw_stems
+                        if (isinstance(a, dict) and "name" in a) or isinstance(a, str)
+                    ]
+
+                # lyrics — try common key variants
+                for _key in ("lyrics", "hasLyrics", "has_lyrics", "lyric", "hasLyric"):
+                    _val = raw.get(_key)
+                    if _val is not None:
+                        if isinstance(_val, str):
+                            m["lyrics"] = _val.lower() not in ("", "false", "no", "0")
+                        else:
+                            m["lyrics"] = bool(_val)
+                        break
         except Exception as exc:
             log.debug("meta failed for %s: %s", p.name, exc)
         if not m["title"]:
