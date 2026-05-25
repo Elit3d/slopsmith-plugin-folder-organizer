@@ -1,6 +1,6 @@
 # Folder Organizer — Slopsmith Plugin
 
-![Version](https://img.shields.io/badge/version-1.5.0-blue)
+![Version](https://img.shields.io/badge/version-1.6.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Slopsmith%20Desktop-darkblue)
 ![Slopsmith](https://img.shields.io/badge/requires-Slopsmith%20v0.2.9+-orange)
 
@@ -30,7 +30,10 @@ A Slopsmith plugin that organizes your sloppak DLC songs into a folder tree view
 - **Album art** — pulls art automatically for every song in both views
 - **Folder management** — create, rename, and delete folders without leaving the plugin
 - **Drag-and-drop** — drag songs between folders with smooth auto-scroll; press `Esc` to cancel
-- **Move songs** — reassign any song to a different folder on the fly
+- **Move songs** — reassign any song to a different folder on the fly; press `Esc` to cancel
+- **Sort options** — sort songs by title, artist, duration, year, tuning, or recently added with an asc/desc toggle
+- **Advanced filters** — filter by arrangements, lyrics, and tuning with include and exclude support
+- **Hover metadata** — hover any song to reveal colour-coded arrangement, lyrics, and tuning badges; click a badge to set it as a filter instantly
 - **Live search** — filters by title, artist, album, or filename instantly across all folders
 - **Collapsible folders** — expand/collapse individual folders, open state saved across sessions
 - **Expand All / Collapse All** — manage the whole tree in one click
@@ -60,17 +63,36 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 | Switch to list view | Click the list icon in the toolbar |
 | Play a song | Click any song row or card |
 | Search | Type in the search box or press `/` |
+| Sort songs | Use the sort dropdown in the toolbar |
+| Toggle sort direction | Click the arrow button next to the sort dropdown |
+| Open filters | Click the filter icon in the toolbar |
+| Filter by arrangement | Open filters → click an arrangement pill to include; click `✕` to exclude |
+| Clear all filters | Open filters → click "Clear all" |
+| Filter via hover badge | Hover a song → click any badge to toggle that filter on/off |
 | Create a folder | Click the folder+ icon in the toolbar |
 | Rename a folder | Hover the folder header → click the pencil icon |
 | Delete a folder | Hover the folder header → click the trash icon |
 | Move a song | Hover the song row → click the folder icon |
 | Drag a song to a folder | Click and hold a song → drag to a folder header or body |
 | Cancel a drag | Press `Esc` while holding a song |
+| Cancel a move dialog | Press `Esc` in the move prompt |
 | Expand / collapse a folder | Click the folder header |
 
 ---
 
 ## Changelog
+
+### v1.6
+- Sort songs by title, artist, duration, year, tuning, or recently added
+- Ascending/descending sort toggle
+- Filter panel with arrangement, lyrics, and tuning filters
+- Include and exclude filter modes per tag (split pill UI)
+- Arrangement pills built dynamically from your library — non-standard arrangements appear automatically
+- Standard arrangements (Lead, Rhythm, Bass, Combo) pinned above non-standard ones
+- Hover any song to reveal colour-coded metadata badges (amber = arrangements, rose = lyrics, teal = tuning)
+- Click any hover badge to instantly toggle that filter on/off
+- Hover also shows year and date added separately
+- Press `Esc` to cancel a move song dialog
 
 ### v1.5
 - Drag-and-drop songs between folders
@@ -101,7 +123,7 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 ## Roadmap
 
 - [x] ~~Drag-and-drop songs between folders~~
-- [ ] Sort options & advanced filtering within folders
+- [x] ~~Sort options & advanced filtering within folders~~
 - [ ] Nested subfolders
 - [ ] Auto play song on hover (ability to turn this function on/off)
 - [ ] Bulk move — select multiple songs and move them at once
