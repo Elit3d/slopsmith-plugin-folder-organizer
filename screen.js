@@ -1244,21 +1244,20 @@ function _folderSection(folder, depth) {
         if (_hoveredFolder && _hoveredFolder.wrap !== wrap) {
             _hoveredFolder.hdr.style.backgroundColor = '';
             _hoveredFolder.wrap.style.backgroundColor = '';
+            _hoveredFolder.btnGroup.style.maxWidth = '0';
         }
         _hoveredFolder = { wrap, hdr, btnGroup };
         hdr.style.backgroundColor = 'rgba(55,65,81,0.5)';
         wrap.style.backgroundColor = 'rgba(55,65,81,0.12)';
+        btnGroup.style.maxWidth = '160px';
     });
     wrap.addEventListener('mouseout', function (e) {
         if (wrap.contains(e.relatedTarget)) return;
         hdr.style.backgroundColor = '';
         wrap.style.backgroundColor = '';
+        btnGroup.style.maxWidth = '0';
         if (_hoveredFolder && _hoveredFolder.wrap === wrap) _hoveredFolder = null;
     });
-
-    // Button reveal — header only
-    hdr.addEventListener('mouseenter', function () { btnGroup.style.maxWidth = '160px'; });
-    hdr.addEventListener('mouseleave', function () { btnGroup.style.maxWidth = '0'; });
 
     // cnt sits after btnGroup so it rests at the far right when buttons are hidden
     hdr.appendChild(chev);
