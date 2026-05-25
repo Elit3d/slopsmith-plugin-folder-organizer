@@ -35,24 +35,30 @@ let _sortDir     = _store('sortDir') || 'asc';  // 'asc' | 'desc'
 // ── Core arrangement order (pinned to top of filter panel) ───────────
 const _CORE_ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass', 'Combo'];
 
+// ── Flat list of every song in the tree (root + all nested folders) ───
+function _allSongs() {
+    if (!_tree) return [];
+    var result = _tree.root_songs.slice();
+    function _collectFolder(f) {
+        f.songs.forEach(function (s) { result.push(s); });
+        (f.children || []).forEach(_collectFolder);
+    }
+    _tree.folders.forEach(_collectFolder);
+    return result;
+}
+
 // ── Dynamic arrangement / stem discovery ──────────────────────────────
 function _getArrangements() {
-    if (!_tree) return [];
     var counts = {};
-    _tree.root_songs.concat(
-        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
-    ).forEach(function (s) {
+    _allSongs().forEach(function (s) {
         (s.arrangements || []).forEach(function (a) { counts[a] = (counts[a] || 0) + 1; });
     });
     return Object.keys(counts).sort(function (a, b) { return (counts[b] - counts[a]) || a.localeCompare(b); });
 }
 
 function _getStems() {
-    if (!_tree) return [];
     var counts = {};
-    _tree.root_songs.concat(
-        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
-    ).forEach(function (s) {
+    _allSongs().forEach(function (s) {
         (s.stems || []).forEach(function (st) { counts[st] = (counts[st] || 0) + 1; });
     });
     return Object.keys(counts).sort(function (a, b) { return (counts[b] - counts[a]) || a.localeCompare(b); });
@@ -63,11 +69,7 @@ function _getStems() {
 // toggling needed. Add songs with stems and the stems section reappears on reload.
 function _getAvailableFilters() {
     var out = { arrangements: false, stems: false, lyrics: false, tuning: false };
-    if (!_tree) return out;
-    var all = _tree.root_songs.concat(
-        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
-    );
-    all.forEach(function (s) {
+    _allSongs().forEach(function (s) {
         if ((s.arrangements || []).length) out.arrangements = true;
         if ((s.stems        || []).length) out.stems        = true;
         if (s.lyrics)                      out.lyrics       = true;
@@ -170,9 +172,16 @@ function _filtered() {
     function _keep(s) {
         return (!hasQuery || _match(s)) && (!hasFilters || _matchFilters(s));
     }
-    const folders = _tree.folders
-        .map(function (f) { return { name: f.name, songs: f.songs.filter(_keep) }; })
-        .filter(function (f) { return f.songs.length; });
+    function _filterFolder(f) {
+        var filteredSongs    = f.songs.filter(_keep);
+        var filteredChildren = (f.children || []).map(_filterFolder).filter(function (c) {
+            return c.songs.length || c.children.length;
+        });
+        return { name: f.name, path: f.path, songs: filteredSongs, children: filteredChildren };
+    }
+    const folders = _tree.folders.map(_filterFolder).filter(function (f) {
+        return f.songs.length || f.children.length;
+    });
     return { folders: folders, root_songs: _tree.root_songs.filter(_keep) };
 }
 
@@ -223,12 +232,8 @@ function _matchFilters(song) {
 }
 
 function _getTunings() {
-    if (!_tree) return [];
     var counts = {};
-    var allSongs = _tree.root_songs.concat(
-        _tree.folders.reduce(function (acc, f) { return acc.concat(f.songs); }, [])
-    );
-    allSongs.forEach(function (s) {
+    _allSongs().forEach(function (s) {
         var t = s.tuning ? String(s.tuning).trim() : '';
         if (t) counts[t] = (counts[t] || 0) + 1;
     });
@@ -1024,13 +1029,22 @@ function _endPointerDrag() {
     document.removeEventListener('keydown', _onDragKeyDown);
 }
 
+function _findFolderByPath(path, folders) {
+    for (var i = 0; i < folders.length; i++) {
+        if (folders[i].path === path) return folders[i];
+        var found = _findFolderByPath(path, folders[i].children || []);
+        if (found) return found;
+    }
+    return null;
+}
+
 async function _executeDrop(data, targetFolder) {
     let song = null;
     if (data.folder === '') {
         const idx = _tree.root_songs.findIndex(s => s.filename === data.filename);
         if (idx !== -1) song = _tree.root_songs.splice(idx, 1)[0];
     } else {
-        const folder = _tree.folders.find(f => f.name === data.folder);
+        const folder = _findFolderByPath(data.folder, _tree.folders);
         if (folder) {
             const idx = folder.songs.findIndex(s => s.filename === data.filename);
             if (idx !== -1) song = folder.songs.splice(idx, 1)[0];
@@ -1042,7 +1056,7 @@ async function _executeDrop(data, targetFolder) {
         _tree.root_songs.push(song);
         _unsortedOpen = true;
     } else {
-        const dest = _tree.folders.find(f => f.name === targetFolder);
+        const dest = _findFolderByPath(targetFolder, _tree.folders);
         if (dest) { dest.songs.push(song); _openFolders.add(targetFolder); }
     }
     _render();
@@ -1080,14 +1094,21 @@ function _makeDropTarget(el, targetFolder) {
 }
 
 // ── Move song dialog ──────────────────────────────────────────────────
-async function _moveSong(song, currentFolder) {
+async function _moveSong(song, currentFolderPath) {
     if (!_tree) return;
-    const folderNames = _tree.folders.map(f => f.name).filter(n => n !== currentFolder);
-    const options = ['(Unsorted)', ...folderNames];
+    // Collect all folder paths recursively
+    var allPaths = [];
+    function _collectPaths(f) {
+        allPaths.push(f.path);
+        (f.children || []).forEach(_collectPaths);
+    }
+    _tree.folders.forEach(_collectPaths);
+    var folderPaths = allPaths.filter(function (p) { return p !== currentFolderPath; });
+    const options = ['(Unsorted)', ...folderPaths];
     const choice = await _prompt(
         'Move "' + (song.title || song.filename) + '" to:\n' +
         options.map((n, i) => i + ': ' + n).join('\n') +
-        '\n\nEnter number or folder name:',
+        '\n\nEnter number or folder path:',
         ''
     );
     if (!choice && choice !== 0) return;
@@ -1107,9 +1128,17 @@ async function _moveSong(song, currentFolder) {
 }
 
 // ── Folder header ─────────────────────────────────────────────────────
-function _folderSection(folder) {
-    const open = _query ? true : _openFolders.has(folder.name);
+function _folderSection(folder, depth) {
+    depth = depth || 0;
+    const open = _query ? true : _openFolders.has(folder.path);
     const wrap = document.createElement('div');
+
+    // deep song count — direct + all nested
+    function _countDeep(f) {
+        var n = f.songs.length;
+        (f.children || []).forEach(function (c) { n += _countDeep(c); });
+        return n;
+    }
 
     // header
     const hdr = document.createElement('div');
@@ -1139,7 +1168,20 @@ function _folderSection(folder) {
 
     const cnt = document.createElement('span');
     cnt.className = 'shrink-0 text-xs text-gray-600 tabular-nums mr-1';
-    cnt.textContent = String(folder.songs.length);
+    cnt.textContent = String(_countDeep(folder));
+
+    // subfolder create button
+    const subBtn = document.createElement('button');
+    subBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+    subBtn.title = 'New subfolder';
+    subBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+        <path fill-rule="evenodd" d="M10 11a1 1 0 011 1v2h2a1 1 0 110 2h-2v2a1 1 0 11-2 0v-2H7a1 1 0 110-2h2v-2a1 1 0 011-1z" clip-rule="evenodd"/>
+    </svg>`;
+    subBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _createFolder(folder.path);
+    });
 
     // rename button
     const renameBtn = document.createElement('button');
@@ -1149,7 +1191,7 @@ function _folderSection(folder) {
         <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>`;
     renameBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        _renameFolder(folder.name);
+        _renameFolder(folder.path);
     });
 
     // delete button
@@ -1162,17 +1204,22 @@ function _folderSection(folder) {
               clip-rule="evenodd"/></svg>`;
     delBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        _deleteFolder(folder.name, folder.songs.length);
+        _deleteFolder(folder.path, _countDeep(folder));
     });
 
     hdr.appendChild(chev);
     hdr.appendChild(ico);
     hdr.appendChild(lbl);
     hdr.appendChild(cnt);
+    hdr.appendChild(subBtn);
     hdr.appendChild(renameBtn);
     hdr.appendChild(delBtn);
 
-    _makeDropTarget(hdr, folder.name);
+    _makeDropTarget(hdr, folder.path);
+
+    // content area — wraps song list + nested children, toggled as one unit
+    const content = document.createElement('div');
+    if (!open) content.style.display = 'none';
 
     // song list/grid — only populated for open folders to keep initial render fast
     const list = document.createElement('div');
@@ -1181,28 +1228,39 @@ function _folderSection(folder) {
     } else {
         list.className = 'ml-5 mt-0.5 space-y-0';
     }
+    _makeDropTarget(list, folder.path);
+
+    // nested children container — indented with a subtle left border
+    const childrenWrap = document.createElement('div');
+    childrenWrap.style.cssText = 'margin-left:12px; padding-left:4px; border-left:1px solid #1e2030;';
+
     let _listPopulated = open;
     function _populateFolderList() {
         _sortSongs(folder.songs).forEach(function (s) {
-            list.appendChild(_view === 'grid' ? _songCard(s, folder.name) : _songRow(s, folder.name));
+            list.appendChild(_view === 'grid' ? _songCard(s, folder.path) : _songRow(s, folder.path));
+        });
+        (folder.children || []).forEach(function (child) {
+            childrenWrap.appendChild(_folderSection(child, depth + 1));
         });
     }
-    if (open) { _populateFolderList(); } else { list.style.display = 'none'; }
-    _makeDropTarget(list, folder.name);
+    if (open) _populateFolderList();
+
+    content.appendChild(list);
+    content.appendChild(childrenWrap);
 
     hdr.addEventListener('click', function () {
         if (_query) return;
-        const nowOpen = list.style.display === 'none';
+        const nowOpen = content.style.display === 'none';
         if (nowOpen && !_listPopulated) { _populateFolderList(); _listPopulated = true; }
-        list.style.display = nowOpen ? (_view === 'grid' ? 'grid' : '') : 'none';
+        content.style.display = nowOpen ? '' : 'none';
         chev.style.transform = nowOpen ? 'rotate(90deg)' : '';
-        if (nowOpen) _openFolders.add(folder.name);
-        else         _openFolders.delete(folder.name);
+        if (nowOpen) _openFolders.add(folder.path);
+        else         _openFolders.delete(folder.path);
         _storeJSON('open', [..._openFolders]);
     });
 
     wrap.appendChild(hdr);
-    wrap.appendChild(list);
+    wrap.appendChild(content);
     return wrap;
 }
 
@@ -1276,43 +1334,68 @@ function _unsortedSection(songs) {
 }
 
 // ── Folder management ─────────────────────────────────────────────────
-async function _createFolder() {
-    const name = await _prompt('New folder name:');
+async function _createFolder(parentPath) {
+    var promptMsg = parentPath
+        ? 'New subfolder name in "' + parentPath.split('/').pop() + '":'
+        : 'New folder name:';
+    const name = await _prompt(promptMsg);
     if (!name || !name.trim()) return;
     try {
-        await _api('/folder/create', { name: name.trim() });
-        _openFolders.add(name.trim());
+        const body = { name: name.trim() };
+        if (parentPath) body.parent = parentPath;
+        await _api('/folder/create', body);
+        var newPath = parentPath ? parentPath + '/' + name.trim() : name.trim();
+        if (parentPath) _openFolders.add(parentPath); // keep parent open so child is visible
+        _openFolders.add(newPath);
         await _load();
     } catch (err) {
         await _prompt('Create failed: ' + err.message);
     }
 }
 
-async function _renameFolder(oldName) {
+async function _renameFolder(folderPath) {
+    var oldName = folderPath.split('/').pop();
     const newName = await _prompt('Rename "' + oldName + '" to:', oldName);
     if (!newName || !newName.trim() || newName.trim() === oldName) return;
     try {
-        await _api('/folder/rename', { old: oldName, new: newName.trim() });
-        if (_openFolders.has(oldName)) {
-            _openFolders.delete(oldName);
-            _openFolders.add(newName.trim());
-            _storeJSON('open', [..._openFolders]);
-        }
+        await _api('/folder/rename', { old: folderPath, new: newName.trim() });
+        // Update all open-folder paths that match or are beneath the renamed path
+        var parts = folderPath.split('/');
+        parts[parts.length - 1] = newName.trim();
+        var newPath = parts.join('/');
+        var updated = new Set();
+        _openFolders.forEach(function (p) {
+            if (p === folderPath) {
+                updated.add(newPath);
+            } else if (p.startsWith(folderPath + '/')) {
+                updated.add(newPath + p.slice(folderPath.length));
+            } else {
+                updated.add(p);
+            }
+        });
+        _openFolders = updated;
+        _storeJSON('open', [..._openFolders]);
         await _load();
     } catch (err) {
         await _prompt('Rename failed: ' + err.message);
     }
 }
 
-async function _deleteFolder(name, songCount) {
+async function _deleteFolder(folderPath, songCount) {
+    var folderName = folderPath.split('/').pop();
     const msg = songCount > 0
-        ? 'Delete "' + name + '"? Its ' + songCount + ' song(s) will be moved to Unsorted.'
-        : 'Delete empty folder "' + name + '"?';
+        ? 'Delete "' + folderName + '"? Its ' + songCount + ' song(s) will be moved to Unsorted.'
+        : 'Delete empty folder "' + folderName + '"?';
     const ok = await _confirm(msg);
     if (!ok) return;
     try {
-        await _api('/folder/delete', { name });
-        _openFolders.delete(name);
+        await _api('/folder/delete', { name: folderPath });
+        // Remove this path and all descendant paths from open state
+        var toDelete = [];
+        _openFolders.forEach(function (p) {
+            if (p === folderPath || p.startsWith(folderPath + '/')) toDelete.push(p);
+        });
+        toDelete.forEach(function (p) { _openFolders.delete(p); });
         _storeJSON('open', [..._openFolders]);
         await _load();
     } catch (err) {
@@ -1323,7 +1406,11 @@ async function _deleteFolder(name, songCount) {
 // ── Expand / collapse all ─────────────────────────────────────────────
 function _expandAll() {
     if (!_tree) return;
-    _tree.folders.forEach(f => _openFolders.add(f.name));
+    function _addPaths(f) {
+        _openFolders.add(f.path);
+        (f.children || []).forEach(_addPaths);
+    }
+    _tree.folders.forEach(_addPaths);
     _unsortedOpen = true;
     _storeJSON('open', [..._openFolders]);
     _store('unsorted_open', 'true');

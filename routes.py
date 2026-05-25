@@ -40,6 +40,20 @@ def setup(app, context):
             return False
         return True
 
+    def _safe_path(path_str: str) -> bool:
+        """Validate a slash-separated folder path — each segment must be a safe name."""
+        if not path_str:
+            return False
+        return all(_safe_name(p) for p in path_str.split("/"))
+
+    def _path_to_dir(root: Path, folder_path: str) -> Path:
+        """Resolve a slash-separated folder path relative to root."""
+        parts = folder_path.split("/")
+        result = root
+        for part in parts:
+            result = result / part
+        return result
+
     def _meta(p: Path, dlc: Path) -> dict:
         try:
             rel = p.relative_to(dlc)
@@ -103,6 +117,32 @@ def setup(app, context):
             m["title"] = p.stem
         return m
 
+    def _scan_dir(path: Path, root: Path, dlc: Path) -> dict:
+        """Recursively scan a directory and return a folder node."""
+        songs = []
+        children = []
+        try:
+            for entry in sorted(path.iterdir(), key=lambda p: p.name.lower()):
+                if entry.name.startswith("."):
+                    continue
+                if _is_song(entry):
+                    songs.append(_meta(entry, dlc))
+                elif entry.is_dir():
+                    children.append(_scan_dir(entry, root, dlc))
+        except PermissionError:
+            log.warning("permission denied: %s", path)
+        try:
+            rel = path.relative_to(root)
+            folder_path = "/".join(rel.parts)
+        except ValueError:
+            folder_path = path.name
+        return {
+            "name": path.name,
+            "path": folder_path,
+            "songs": songs,
+            "children": children,
+        }
+
     @router.get("/tree")
     def get_tree():
         dlc = _dlc_root()
@@ -111,8 +151,8 @@ def setup(app, context):
                                  "error": "DLC directory not found"})
         root = _scan_root(dlc)
         log.info("folder_browser: scanning %s", root)
-        folders: dict[str, list] = {}
-        root_songs: list = []
+        folders = []
+        root_songs = []
         try:
             for entry in sorted(root.iterdir(), key=lambda p: p.name.lower()):
                 if entry.name.startswith("."):
@@ -120,34 +160,29 @@ def setup(app, context):
                 if _is_song(entry):
                     root_songs.append(_meta(entry, dlc))
                 elif entry.is_dir():
-                    kids = []
-                    try:
-                        for child in sorted(entry.iterdir(),
-                                            key=lambda p: p.name.lower()):
-                            if not child.name.startswith(".") and _is_song(child):
-                                kids.append(_meta(child, dlc))
-                    except PermissionError:
-                        log.warning("permission denied: %s", entry)
-                    folders[entry.name] = kids
+                    folders.append(_scan_dir(entry, root, dlc))
         except PermissionError:
             return JSONResponse({"folders": [], "root_songs": [],
                                  "error": "Permission denied"})
-        folder_list = [
-            {"name": n, "songs": s}
-            for n, s in sorted(folders.items(), key=lambda kv: kv[0].lower())
-        ]
-        return JSONResponse({"folders": folder_list, "root_songs": root_songs})
+        return JSONResponse({"folders": folders, "root_songs": root_songs})
 
     @router.post("/folder/create")
     async def create_folder(request: Request):
         body = await request.json()
         name = (body.get("name") or "").strip()
+        parent = (body.get("parent") or "").strip()
         if not _safe_name(name):
             return JSONResponse({"error": "Invalid folder name"}, status_code=400)
+        if parent and not _safe_path(parent):
+            return JSONResponse({"error": "Invalid parent path"}, status_code=400)
         dlc = _dlc_root()
         if not dlc:
             return JSONResponse({"error": "DLC dir not found"}, status_code=500)
-        target = _scan_root(dlc) / name
+        root = _scan_root(dlc)
+        parent_dir = _path_to_dir(root, parent) if parent else root
+        if parent and not parent_dir.exists():
+            return JSONResponse({"error": "Parent folder not found"}, status_code=404)
+        target = parent_dir / name
         if target.exists():
             return JSONResponse({"error": "Folder already exists"}, status_code=400)
         try:
@@ -161,13 +196,14 @@ def setup(app, context):
         body = await request.json()
         old = (body.get("old") or "").strip()
         new = (body.get("new") or "").strip()
-        if not _safe_name(old) or not _safe_name(new):
+        if not _safe_path(old) or not _safe_name(new):
             return JSONResponse({"error": "Invalid folder name"}, status_code=400)
         dlc = _dlc_root()
         if not dlc:
             return JSONResponse({"error": "DLC dir not found"}, status_code=500)
         root = _scan_root(dlc)
-        src, dst = root / old, root / new
+        src = _path_to_dir(root, old)
+        dst = src.parent / new  # rename within the same parent
         if not src.exists():
             return JSONResponse({"error": "Folder not found"}, status_code=404)
         if dst.exists():
@@ -182,21 +218,22 @@ def setup(app, context):
     async def delete_folder(request: Request):
         body = await request.json()
         name = (body.get("name") or "").strip()
-        if not _safe_name(name):
-            return JSONResponse({"error": "Invalid folder name"}, status_code=400)
+        if not _safe_path(name):
+            return JSONResponse({"error": "Invalid folder path"}, status_code=400)
         dlc = _dlc_root()
         if not dlc:
             return JSONResponse({"error": "DLC dir not found"}, status_code=500)
         root = _scan_root(dlc)
-        target = root / name
+        target = _path_to_dir(root, name)
         if not target.exists():
             return JSONResponse({"error": "Folder not found"}, status_code=404)
         try:
-            for child in target.iterdir():
-                if _is_song(child):
-                    dest = root / child.name
+            # Move all songs (at any depth) to the scan root before deleting
+            for song_path in sorted(target.rglob("*")):
+                if _is_song(song_path):
+                    dest = root / song_path.name
                     if not dest.exists():
-                        child.rename(dest)
+                        song_path.rename(dest)
             shutil.rmtree(target)
             return JSONResponse({"ok": True})
         except Exception as e:
@@ -215,9 +252,9 @@ def setup(app, context):
             return JSONResponse({"error": "Song not found"}, status_code=404)
         root = _scan_root(dlc)
         if dest_folder:
-            if not _safe_name(dest_folder):
-                return JSONResponse({"error": "Invalid folder name"}, status_code=400)
-            dst_dir = root / dest_folder
+            if not _safe_path(dest_folder):
+                return JSONResponse({"error": "Invalid folder path"}, status_code=400)
+            dst_dir = _path_to_dir(root, dest_folder)
             if not dst_dir.exists():
                 return JSONResponse({"error": "Destination folder not found"}, status_code=404)
         else:
