@@ -1246,6 +1246,7 @@ function _folderSection(folder, depth) {
     // cleared before the new one lights up — avoiding the ancestor stack-highlight bug.
     wrap.style.cssText = 'border-radius:6px; margin:1px 0;';
     wrap.addEventListener('mouseover', function (e) {
+        if (_dragState) return; // don't shift layout during drag
         e.stopPropagation();
         if (_hoveredFolder && _hoveredFolder.wrap !== wrap) {
             _hoveredFolder.hdr.style.backgroundColor = '';
@@ -1258,6 +1259,7 @@ function _folderSection(folder, depth) {
         btnGroup.style.maxWidth = '160px';
     });
     wrap.addEventListener('mouseout', function (e) {
+        if (_dragState) return;
         if (wrap.contains(e.relatedTarget)) return;
         hdr.style.backgroundColor = '';
         wrap.style.backgroundColor = '';
@@ -1646,7 +1648,7 @@ function _init() {
     reload.addEventListener('click', function () { _loaded = false; _load(); });
     expandAll.addEventListener('click', _expandAll);
     collapseAll.addEventListener('click', _collapseAll);
-    newFolder.addEventListener('click', _createFolder);
+    newFolder.addEventListener('click', function () { _createFolder(); });
     if (filterBtn)  filterBtn.addEventListener('click', _openFilterPanel);
     if (filterBack) filterBack.addEventListener('click', _closeFilterPanel);
     _updateFilterBadge();
