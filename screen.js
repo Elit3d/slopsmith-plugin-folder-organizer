@@ -1229,33 +1229,41 @@ function _folderSection(folder, depth) {
     } else {
         list.className = 'ml-5 mt-0.5 space-y-0';
     }
-    // At depth > 0, match the same left-border indent as childrenWrap so songs
-    // are visually grouped with any sibling subfolders inside this folder.
-    if (depth > 0) {
-        list.style.marginLeft  = '16px';
-        list.style.paddingLeft = '4px';
-        list.style.borderLeft  = '2px solid #2d3748';
-    }
     _makeDropTarget(list, folder.path);
 
-    // nested children container — indented with a visible left border
+    // nested children container (no border — border is applied at the wrap level below)
     const childrenWrap = document.createElement('div');
-    childrenWrap.style.cssText = 'margin-left:16px; padding-left:4px; border-left:2px solid #2d3748;';
+
+    // Suppress grid padding on empty song lists — prevents a blank amber stub
+    // from appearing when a subfolder has children but no direct songs.
+    if (_view === 'grid' && !folder.songs.length) list.style.padding = '0';
 
     let _listPopulated = open;
     function _populateFolderList() {
-        // Subfolders first (matches OS file browser convention), then direct songs
-        (folder.children || []).forEach(function (child) {
-            childrenWrap.appendChild(_folderSection(child, depth + 1));
-        });
+        // Songs first (primary content), then subfolders below
         _sortSongs(folder.songs).forEach(function (s) {
             list.appendChild(_view === 'grid' ? _songCard(s, folder.path) : _songRow(s, folder.path));
+        });
+        (folder.children || []).forEach(function (child) {
+            childrenWrap.appendChild(_folderSection(child, depth + 1));
         });
     }
     if (open) _populateFolderList();
 
-    content.appendChild(childrenWrap);
-    content.appendChild(list);
+    // depth > 0: ONE container with a single continuous amber border-left so both
+    // songs and child folders are visually grouped under this subfolder.
+    // depth == 0: children get their own subtle neutral-border indent; root songs are unbordered.
+    if (depth > 0) {
+        const innerWrap = document.createElement('div');
+        innerWrap.style.cssText = 'margin-left:20px; padding-left:10px; border-left:2px solid rgba(234,179,8,0.35);';
+        innerWrap.appendChild(list);
+        innerWrap.appendChild(childrenWrap);
+        content.appendChild(innerWrap);
+    } else {
+        childrenWrap.style.marginLeft = '20px';
+        content.appendChild(list);
+        content.appendChild(childrenWrap);
+    }
 
     hdr.addEventListener('click', function () {
         if (_query) return;
