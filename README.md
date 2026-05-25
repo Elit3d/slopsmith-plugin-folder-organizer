@@ -72,7 +72,6 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 | Create a folder | Click the folder+ icon in the toolbar |
 | Rename a folder | Hover the folder header → click the pencil icon |
 | Delete a folder | Hover the folder header → click the trash icon |
-| Move a song | Hover the song row → click the folder icon |
 | Drag a song to a folder | Click and hold a song → drag to a folder header or body; Press `Esc` in the move prompt to cancel |
 | Expand / collapse a folder | Click the folder header |
 
