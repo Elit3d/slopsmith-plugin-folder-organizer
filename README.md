@@ -30,7 +30,7 @@ A Slopsmith plugin that organizes your sloppak DLC songs into a folder tree view
 - **Album art** — pulls art automatically for every song in both views
 - **Folder management** — create, rename, and delete folders without leaving the plugin
 - **Drag-and-drop** — drag songs between folders with smooth auto-scroll; press `Esc` to cancel
-- **Move songs** — reassign any song to a different folder on the fly; press `Esc` to cancel
+- **Move songs** — reassign any song to a different folder on the fly
 - **Sort options** — sort songs by title, artist, duration, year, tuning, or recently added with an asc/desc toggle
 - **Advanced filters** — filter by arrangements, lyrics, and tuning with include and exclude support
 - **Hover metadata** — hover any song to reveal colour-coded arrangement, lyrics, and tuning badges; click a badge to set it as a filter instantly
