@@ -1124,6 +1124,12 @@ function _folderSection(folder, depth) {
         (f.children || []).forEach(function (c) { n += _countDeep(c); });
         return n;
     }
+    // deep subfolder count — all nested subfolders
+    function _countFoldersDeep(f) {
+        var n = (f.children || []).length;
+        (f.children || []).forEach(function (c) { n += _countFoldersDeep(c); });
+        return n;
+    }
 
     // header
     const hdr = document.createElement('div');
@@ -1188,7 +1194,7 @@ function _folderSection(folder, depth) {
               clip-rule="evenodd"/></svg>`;
     delBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        _deleteFolder(folder.path, _countDeep(folder));
+        _deleteFolder(folder.path, _countDeep(folder), _countFoldersDeep(folder));
     });
 
     // expand-all / collapse-all children buttons (only when folder has subfolders)
@@ -1463,10 +1469,13 @@ async function _renameFolder(folderPath) {
     }
 }
 
-async function _deleteFolder(folderPath, songCount) {
+async function _deleteFolder(folderPath, songCount, folderCount) {
     var folderName = folderPath.split('/').pop();
-    const msg = songCount > 0
-        ? 'Delete "' + folderName + '"? Its ' + songCount + ' song(s) will be moved to Unsorted.'
+    var parts = [];
+    if (songCount > 0)   parts.push(songCount  + ' song'      + (songCount  === 1 ? '' : 's'));
+    if (folderCount > 0) parts.push(folderCount + ' subfolder' + (folderCount === 1 ? '' : 's'));
+    var msg = parts.length
+        ? 'Delete "' + folderName + '"? It contains ' + parts.join(' and ') + '. Songs will be moved to Unsorted.'
         : 'Delete empty folder "' + folderName + '"?';
     const ok = await _confirm(msg);
     if (!ok) return;
