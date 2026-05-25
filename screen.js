@@ -1192,10 +1192,46 @@ function _folderSection(folder, depth) {
         _deleteFolder(folder.path, _countDeep(folder));
     });
 
+    // expand-all / collapse-all children buttons (only when folder has subfolders)
+    const expandChildrenBtn  = document.createElement('button');
+    const collapseChildrenBtn = document.createElement('button');
+    if (folder.children && folder.children.length) {
+        expandChildrenBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+        expandChildrenBtn.title = 'Expand all subfolders';
+        expandChildrenBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="w-3.5 h-3.5">
+            <path d="M5 8l5 5 5-5"/>
+            <path d="M5 4l5 5 5-5" opacity=".4"/>
+        </svg>`;
+        expandChildrenBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            _openFolders.add(folder.path);
+            (folder.children || []).forEach(function (c) { _openFolders.add(c.path); });
+            _storeJSON('open', [..._openFolders]);
+            _render();
+        });
+
+        collapseChildrenBtn.className = 'shrink-0 p-1 rounded text-gray-600 hover:text-white hover:bg-dark-400 opacity-0 group-hover:opacity-100 transition-opacity';
+        collapseChildrenBtn.title = 'Collapse all subfolders';
+        collapseChildrenBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="w-3.5 h-3.5">
+            <path d="M5 12l5-5 5 5"/>
+            <path d="M5 16l5-5 5 5" opacity=".4"/>
+        </svg>`;
+        collapseChildrenBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            (folder.children || []).forEach(function (c) { _openFolders.delete(c.path); });
+            _storeJSON('open', [..._openFolders]);
+            _render();
+        });
+    }
+
     hdr.appendChild(chev);
     hdr.appendChild(ico);
     hdr.appendChild(lbl);
     hdr.appendChild(cnt);
+    if (folder.children && folder.children.length) {
+        hdr.appendChild(expandChildrenBtn);
+        hdr.appendChild(collapseChildrenBtn);
+    }
     hdr.appendChild(subBtn);
     hdr.appendChild(renameBtn);
     hdr.appendChild(delBtn);
