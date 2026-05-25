@@ -131,6 +131,7 @@ https://github.com/Elit3d/slopsmith-plugin-folder-organizer.git
 - [ ] Custom themes — switch between colour schemes to match your style
 - [ ] Favoriting songs
 - [ ] Editing song metadata
+- [ ] Browse to folder/song directory - opens windows browser to where the song is in the dir
 
 ---
 
